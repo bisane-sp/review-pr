@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 EMOJI_DONE = "✅"  # the app approved + merged
 EMOJI_NOOP = "🚫"  # already merged — nothing for anyone to do
 EMOJI_ATTENTION = "⚠️"  # the user needs to act (closed/draft/blocked/failed/error)
+EMOJI_NO_LINK = "❓"  # no PR link found in the message
 
 
 @dataclass
@@ -55,6 +56,8 @@ def handle_chat_event(payload: dict) -> None:
             "merge it for you.",
             event.thread_name,
         )
+        if event.message_name:
+            add_reaction(event.message_name, EMOJI_NO_LINK)
         return
 
     # Every branch below resolves to exactly one outcome, so a PR link is never left unanswered.

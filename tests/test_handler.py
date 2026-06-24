@@ -70,7 +70,7 @@ def test_non_human_sender_is_ignored():
     react.assert_not_called()
 
 
-def test_message_without_pr_url_replies_no_link_and_does_not_react():
+def test_message_without_pr_url_replies_no_link_and_reacts():
     with (
         patch.object(handler, "get_pr_status") as status,
         patch.object(handler, "post_message") as post,
@@ -83,7 +83,7 @@ def test_message_without_pr_url_replies_no_link_and_does_not_react():
     assert "didn't spot a GitHub PR link" in text
     assert thread == THREAD
     post.assert_called_once()
-    react.assert_not_called()
+    react.assert_called_once_with(MESSAGE, handler.EMOJI_NO_LINK)
 
 
 def test_already_merged_reacts_noop_and_skips():
