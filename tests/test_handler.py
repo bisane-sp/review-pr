@@ -1,6 +1,8 @@
 from unittest.mock import patch
 
-from review_pr import handler
+import pytest
+
+from review_pr import dedup, handler
 from review_pr.handler import EMOJI_ATTENTION, EMOJI_DONE, EMOJI_NOOP
 from review_pr.github import GhError, PrStatus
 
@@ -8,6 +10,14 @@ SPACE = "spaces/TEST"
 URL = "https://github.com/org/repo/pull/1"
 THREAD = "spaces/TEST/threads/T1"
 MESSAGE = "spaces/TEST/messages/M1"
+
+
+@pytest.fixture(autouse=True)
+def _clear_dedup():
+    """Reset the dedup history so each test's message id is seen as fresh."""
+    dedup._seen.clear()
+    yield
+    dedup._seen.clear()
 
 
 def _event(text, space=SPACE, thread=THREAD, sender_type="HUMAN", message_name=MESSAGE):
@@ -23,8 +33,15 @@ def _event(text, space=SPACE, thread=THREAD, sender_type="HUMAN", message_name=M
     }
 
 
-def _status(state="OPEN", is_draft=False, author="pr-author"):
-    return PrStatus(state=state, is_draft=is_draft, author=author, mergeable="MERGEABLE", merge_state="CLEAN")
+def _status(state="OPEN", is_draft=False, author="pr-author", base_branch="feature/x"):
+    return PrStatus(
+        state=state,
+        is_draft=is_draft,
+        author=author,
+        base_branch=base_branch,
+        mergeable="MERGEABLE",
+        merge_state="CLEAN",
+    )
 
 
 def test_open_pr_approves_merges_replies_and_reacts():
@@ -168,6 +185,39 @@ def test_merge_failure_reacts_attention_and_replies():
 
     assert "merge didn't go through" in post.call_args[0][0]
     react.assert_called_once_with(MESSAGE, EMOJI_ATTENTION)
+
+
+@pytest.mark.parametrize("branch", ["main", "master", "prezent", "Main", "PREZENT"])
+def test_protected_base_branch_is_not_merged(branch):
+    with (
+        patch.object(handler, "get_pr_status", return_value=_status(base_branch=branch)),
+        patch.object(handler, "approve_and_merge") as merge,
+        patch.object(handler, "post_message") as post,
+        patch.object(handler, "add_reaction") as react,
+    ):
+        handler.handle_chat_event(_event(URL))
+
+    merge.assert_not_called()
+    text = post.call_args[0][0]
+    assert branch in text
+    assert "not allowed to merge" in text
+    react.assert_called_once_with(MESSAGE, EMOJI_ATTENTION)
+
+
+def test_duplicate_delivery_is_processed_once():
+    # The same message id arriving twice (Pub/Sub at-least-once) must approve + merge only once.
+    with (
+        patch.object(handler, "get_pr_status", return_value=_status()),
+        patch.object(handler, "approve_and_merge", return_value="bot-one") as merge,
+        patch.object(handler, "post_message") as post,
+        patch.object(handler, "add_reaction") as react,
+    ):
+        handler.handle_chat_event(_event(URL))
+        handler.handle_chat_event(_event(URL))
+
+    merge.assert_called_once_with(URL, "pr-author")
+    post.assert_called_once()
+    react.assert_called_once_with(MESSAGE, EMOJI_DONE)
 
 
 def test_unexpected_error_still_replies_and_reacts():

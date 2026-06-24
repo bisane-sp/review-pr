@@ -19,12 +19,20 @@ def _fail(stderr):
     return MagicMock(returncode=1, stdout="", stderr=stderr)
 
 
-def _status_json(state="OPEN", is_draft=False, author="pr-author", mergeable="MERGEABLE", merge_state="CLEAN"):
+def _status_json(
+    state="OPEN",
+    is_draft=False,
+    author="pr-author",
+    base_branch="feature/x",
+    mergeable="MERGEABLE",
+    merge_state="CLEAN",
+):
     return json.dumps(
         {
             "state": state,
             "isDraft": is_draft,
             "author": {"login": author},
+            "baseRefName": base_branch,
             "mergeable": mergeable,
             "mergeStateStatus": merge_state,
         }
@@ -41,10 +49,11 @@ def test_get_pr_status_parses_fields():
     assert status.state == "OPEN"
     assert status.is_draft is False
     assert status.author == "alice"
+    assert status.base_branch == "feature/x"
     assert status.mergeable == "MERGEABLE"
     assert status.merge_state == "CLEAN"
     args = run.call_args_list[0][0][0]
-    assert args == ["gh", "pr", "view", URL, "--json", "state,isDraft,author,mergeable,mergeStateStatus"]
+    assert args == ["gh", "pr", "view", URL, "--json", "state,isDraft,author,baseRefName,mergeable,mergeStateStatus"]
     assert run.call_args_list[0][1]["env"]["GH_TOKEN"] == "token-1"  # lookup uses first account
 
 

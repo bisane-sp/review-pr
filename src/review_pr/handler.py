@@ -12,6 +12,7 @@ from dataclasses import dataclass
 
 from .chat import parse_message_event
 from .config import settings
+from .dedup import claim
 from .github import GhError, approve_and_merge, get_pr_status
 from .messages import friendly_gh_error
 from .notify import post_message
@@ -25,6 +26,10 @@ EMOJI_DONE = "✅"  # the app approved + merged
 EMOJI_NOOP = "🚫"  # already merged — nothing for anyone to do
 EMOJI_ATTENTION = "⚠️"  # the user needs to act (closed/draft/blocked/failed/error)
 EMOJI_NO_LINK = "❓"  # no PR link found in the message
+
+# Base branches the bot must never merge into — shared/protected targets that require a human merge.
+# Compared case-insensitively against the PR's base branch.
+PROTECTED_BASE_BRANCHES = {"prezent", "main", "master"}
 
 
 @dataclass
@@ -45,6 +50,12 @@ def handle_chat_event(payload: dict) -> None:
     # Loop guard: only respond to humans. The bot's own webhook replies arrive as non-HUMAN
     # senders; replying to those would trigger an infinite loop.
     if event.sender_type != "HUMAN":
+        return
+
+    # Dedup guard: Pub/Sub is at-least-once and the callback runs on multiple threads, so the same
+    # message can arrive twice. Claim it once; skip any redelivery to avoid a double approve/merge.
+    if event.message_name and not claim(event.message_name):
+        logger.info("Skipping duplicate delivery of %s", event.message_name)
         return
 
     logger.info("Message in %s: %s", event.space_name, event.text)
@@ -92,6 +103,12 @@ def _process_pr(url: str) -> Outcome:
         return Outcome(
             EMOJI_ATTENTION,
             "📝 This PR is still a draft. I'll approve & merge it once it's marked ready for review.",
+        )
+    if status.base_branch.lower() in PROTECTED_BASE_BRANCHES:
+        return Outcome(
+            EMOJI_ATTENTION,
+            f"🚫 This PR targets the *{status.base_branch}* branch, which I'm not allowed to merge "
+            "into. Please get it reviewed and merged manually, or retarget it to a feature branch.",
         )
 
     account = approve_and_merge(url, status.author)

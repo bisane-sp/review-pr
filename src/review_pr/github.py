@@ -54,6 +54,7 @@ class PrStatus:
     state: str  # "OPEN" | "CLOSED" | "MERGED"
     is_draft: bool
     author: str
+    base_branch: str  # baseRefName: the branch the PR would merge into
     mergeable: str  # "MERGEABLE" | "CONFLICTING" | "UNKNOWN"
     merge_state: str  # mergeStateStatus: "CLEAN" | "BLOCKED" | "DIRTY" | "UNSTABLE" | ...
 
@@ -65,7 +66,7 @@ def get_pr_status(url: str) -> PrStatus:
     """
     _, token = settings.github_accounts[0]
     out = _run_gh(
-        ["gh", "pr", "view", url, "--json", "state,isDraft,author,mergeable,mergeStateStatus"],
+        ["gh", "pr", "view", url, "--json", "state,isDraft,author,baseRefName,mergeable,mergeStateStatus"],
         "lookup",
         token,
     )
@@ -77,6 +78,7 @@ def get_pr_status(url: str) -> PrStatus:
         state=data.get("state", ""),
         is_draft=data.get("isDraft", False),
         author=(data.get("author") or {}).get("login", ""),
+        base_branch=data.get("baseRefName", ""),
         mergeable=data.get("mergeable", ""),
         merge_state=data.get("mergeStateStatus", ""),
     )
