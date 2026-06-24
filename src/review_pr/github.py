@@ -13,6 +13,10 @@ from .config import settings
 
 _STDERR_LIMIT = 500
 
+# Parent env vars forwarded to the gh subprocess. Everything else (other secrets in os.environ) is
+# dropped so only GH_TOKEN and what gh needs to run and reach GitHub is exposed to the child process.
+_ENV_PASSTHROUGH = ("PATH", "HOME", "GH_CONFIG_DIR", "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY")
+
 
 class GhError(Exception):
     """A ``gh`` command failed. ``step`` is ``"lookup"``, ``"approve"`` or ``"merge"``."""
@@ -23,12 +27,25 @@ class GhError(Exception):
         super().__init__(f"{step}: {message}")
 
 
+def _gh_env(token: str) -> dict[str, str]:
+    """Build a minimal environment for a ``gh`` subprocess: ``GH_TOKEN`` plus a few passthrough vars.
+
+    Avoids handing the whole parent environment (and any other secrets it holds) to the child.
+    """
+    env = {"GH_TOKEN": token}
+    for key in _ENV_PASSTHROUGH:
+        value = os.environ.get(key)
+        if value is not None:
+            env[key] = value
+    return env
+
+
 def _run_gh(args: list[str], step: str, token: str) -> str:
     """Run a ``gh`` command with ``token`` injected via env. Raise ``GhError`` on any failure.
 
     Returns the command's stripped stdout.
     """
-    env = {**os.environ, "GH_TOKEN": token}
+    env = _gh_env(token)
     try:
         result = subprocess.run(
             args,
@@ -98,6 +115,6 @@ def approve_and_merge(url: str, author: str) -> str:
     Raises ``GhError`` with ``step`` of ``"approve"`` or ``"merge"`` on failure.
     """
     account, token = _select_account(author)
-    _run_gh(["gh", "pr", "review", url, "--approve", "--body", "lgtm."], "approve", token)
+    _run_gh(["gh", "pr", "review", url, "--approve", "--body", ""], "approve", token)
     _run_gh(["gh", "pr", "merge", url, "--merge", "--delete-branch"], "merge", token)
     return account

@@ -78,6 +78,22 @@ def test_get_pr_status_missing_gh_raises():
     assert "not found" in exc.value.message
 
 
+# --- subprocess environment ------------------------------------------------
+
+
+def test_gh_env_passes_token_but_not_unrelated_secrets(monkeypatch):
+    # An unrelated secret in the parent env must NOT reach the gh subprocess.
+    monkeypatch.setenv("UNRELATED_SECRET", "do-not-leak")
+    monkeypatch.setenv("PATH", "/usr/bin")
+    with patch.object(github.subprocess, "run", side_effect=[_ok(_status_json())]) as run:
+        get_pr_status(URL)
+
+    env = run.call_args_list[0][1]["env"]
+    assert env["GH_TOKEN"] == "token-1"
+    assert env["PATH"] == "/usr/bin"  # passthrough var forwarded
+    assert "UNRELATED_SECRET" not in env  # everything else dropped
+
+
 # --- approve_and_merge -----------------------------------------------------
 
 
@@ -91,7 +107,7 @@ def test_approves_with_first_account_when_author_is_neither():
     review_args, review_kwargs = run.call_args_list[0]
     merge_args, merge_kwargs = run.call_args_list[1]
 
-    assert review_args[0] == ["gh", "pr", "review", URL, "--approve", "--body", "lgtm."]
+    assert review_args[0] == ["gh", "pr", "review", URL, "--approve", "--body", ""]
     assert merge_args[0] == ["gh", "pr", "merge", URL, "--merge", "--delete-branch"]
     assert review_kwargs["env"]["GH_TOKEN"] == "token-1"
     assert merge_kwargs["env"]["GH_TOKEN"] == "token-1"
