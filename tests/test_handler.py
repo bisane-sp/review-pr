@@ -33,14 +33,21 @@ def _event(text, space=SPACE, thread=THREAD, sender_type="HUMAN", message_name=M
     }
 
 
-def _status(state="OPEN", is_draft=False, author="pr-author", base_branch="feature/x"):
+def _status(
+    state="OPEN",
+    is_draft=False,
+    author="pr-author",
+    base_branch="feature/x",
+    mergeable="MERGEABLE",
+    merge_state="CLEAN",
+):
     return PrStatus(
         state=state,
         is_draft=is_draft,
         author=author,
         base_branch=base_branch,
-        mergeable="MERGEABLE",
-        merge_state="CLEAN",
+        mergeable=mergeable,
+        merge_state=merge_state,
     )
 
 
@@ -202,6 +209,39 @@ def test_protected_base_branch_is_not_merged(branch):
     assert branch in text
     assert "not allowed to merge" in text
     react.assert_called_once_with(MESSAGE, EMOJI_ATTENTION)
+
+
+@pytest.mark.parametrize(
+    "mergeable,merge_state",
+    [("CONFLICTING", "CLEAN"), ("MERGEABLE", "DIRTY"), ("CONFLICTING", "DIRTY")],
+)
+def test_conflicting_pr_declines_without_approving(mergeable, merge_state):
+    with (
+        patch.object(handler, "get_pr_status",
+                     return_value=_status(mergeable=mergeable, merge_state=merge_state)),
+        patch.object(handler, "approve_and_merge") as merge,
+        patch.object(handler, "post_message") as post,
+        patch.object(handler, "add_reaction") as react,
+    ):
+        handler.handle_chat_event(_event(URL))
+
+    merge.assert_not_called()
+    assert "merge conflicts" in post.call_args[0][0]
+    react.assert_called_once_with(MESSAGE, EMOJI_ATTENTION)
+
+
+def test_unknown_mergeability_still_approves():
+    # GitHub may not have computed mergeability yet; UNKNOWN must NOT block approval.
+    with (
+        patch.object(handler, "get_pr_status",
+                     return_value=_status(mergeable="UNKNOWN", merge_state="UNKNOWN")),
+        patch.object(handler, "approve_and_merge", return_value="bot-one") as merge,
+        patch.object(handler, "post_message"),
+        patch.object(handler, "add_reaction"),
+    ):
+        handler.handle_chat_event(_event(URL))
+
+    merge.assert_called_once_with(URL, "pr-author")
 
 
 def test_duplicate_delivery_is_processed_once():

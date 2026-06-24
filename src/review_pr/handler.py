@@ -110,6 +110,11 @@ def _process_pr(url: str) -> Outcome:
             f"🚫 This PR targets the *{status.base_branch}* branch, which I'm not allowed to merge "
             "into. Please get it reviewed and merged manually, or retarget it to a feature branch.",
         )
+    if status.mergeable == "CONFLICTING" or status.merge_state == "DIRTY":
+        return Outcome(
+            EMOJI_ATTENTION,
+            "⚠️ This PR has merge conflicts. Please resolve them and resend the link.",
+        )
 
     account = approve_and_merge(url, status.author)
     return Outcome(EMOJI_DONE, f"✅ *Approved & merged!* Approved by {account}, branch deleted. 🎉")
