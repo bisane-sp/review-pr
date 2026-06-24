@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     github_account_2: str
     github_token_2: str
     gh_timeout_seconds: int = 60
+    # Console log verbosity (the log file is always DEBUG). One of DEBUG/INFO/WARNING/ERROR/CRITICAL.
+    log_level: str = "INFO"
 
     # Only used by utils/create_space_subscription.py (one-off setup).
     chat_events_topic: str = ""

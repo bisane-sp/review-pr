@@ -5,11 +5,14 @@ is NOT the PR's author.
 """
 
 import json
+import logging
 import os
 import subprocess
 from dataclasses import dataclass
 
 from .config import settings
+
+logger = logging.getLogger(__name__)
 
 _STDERR_LIMIT = 500
 
@@ -46,6 +49,7 @@ def _run_gh(args: list[str], step: str, token: str) -> str:
     Returns the command's stripped stdout.
     """
     env = _gh_env(token)
+    logger.debug("gh %s: running %s", step, " ".join(args))  # token is in env, never in args
     try:
         result = subprocess.run(
             args,
@@ -55,10 +59,19 @@ def _run_gh(args: list[str], step: str, token: str) -> str:
             env=env,
         )
     except subprocess.TimeoutExpired:
+        logger.debug("gh %s: timed out after %ss", step, settings.gh_timeout_seconds)
         raise GhError(step, f"timed out after {settings.gh_timeout_seconds}s")
     except FileNotFoundError:
+        logger.debug("gh %s: gh CLI not found on PATH", step)
         raise GhError(step, "gh CLI not found on PATH")
 
+    logger.debug(
+        "gh %s: rc=%s stdout=%r stderr=%r",
+        step,
+        result.returncode,
+        result.stdout.strip()[:_STDERR_LIMIT],
+        result.stderr.strip()[:_STDERR_LIMIT],
+    )
     if result.returncode != 0:
         raise GhError(step, (result.stderr or result.stdout or "").strip()[:_STDERR_LIMIT])
     return result.stdout.strip()

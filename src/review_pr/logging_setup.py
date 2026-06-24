@@ -6,6 +6,8 @@ from pathlib import Path
 
 import colorlog
 
+from review_pr.config import settings
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 LOG_DIR = PROJECT_ROOT / "logs"
 LOG_PREFIX = "review-pr"
@@ -71,7 +73,7 @@ def _prune_old_logs(keep: Path) -> None:
 
 
 def setup_logging() -> None:
-    """Configure the root logger: coloured console at INFO, full DEBUG log file. Idempotent."""
+    """Configure the root logger: coloured console at settings.log_level, full DEBUG log file. Idempotent."""
     root = logging.getLogger()
     if any(isinstance(h, TimestampedSizeRotatingHandler) for h in root.handlers):
         return  # already configured
@@ -79,7 +81,7 @@ def setup_logging() -> None:
     root.setLevel(logging.DEBUG)
 
     console = colorlog.StreamHandler()
-    console.setLevel(logging.INFO)
+    console.setLevel(settings.log_level.upper())
     console.setFormatter(colorlog.ColoredFormatter(_CONSOLE_FORMAT, datefmt=_DATE_FORMAT, log_colors=_LEVEL_COLORS))
 
     file_handler = TimestampedSizeRotatingHandler()
