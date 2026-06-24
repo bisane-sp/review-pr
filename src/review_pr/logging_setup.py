@@ -10,6 +10,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 LOG_DIR = PROJECT_ROOT / "logs"
 LOG_PREFIX = "review-pr"
 MAX_BYTES = 10 * 1024 * 1024  # roll over once the active file exceeds 10 MB
+RETENTION_DAYS = 7  # delete review-pr_*.log files older than this on startup
 
 _DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 _FILE_FORMAT = (
@@ -56,6 +57,19 @@ class TimestampedSizeRotatingHandler(logging.FileHandler):
             self.stream = self._open()
 
 
+def _prune_old_logs(keep: Path) -> None:
+    """Delete ``review-pr_*.log`` files older than ``RETENTION_DAYS``, never the active ``keep`` file."""
+    cutoff = datetime.now().timestamp() - RETENTION_DAYS * 86400
+    for path in LOG_DIR.glob(f"{LOG_PREFIX}_*.log"):
+        if path == keep:
+            continue
+        try:
+            if path.stat().st_mtime < cutoff:
+                path.unlink()
+        except OSError:
+            pass  # best-effort cleanup; skip files we can't stat or unlink
+
+
 def setup_logging() -> None:
     """Configure the root logger: coloured console at INFO, full DEBUG log file. Idempotent."""
     root = logging.getLogger()
@@ -74,3 +88,8 @@ def setup_logging() -> None:
 
     root.addHandler(console)
     root.addHandler(file_handler)
+
+    try:
+        _prune_old_logs(keep=Path(file_handler.baseFilename))
+    except OSError:
+        logging.getLogger(__name__).warning("Log retention prune failed", exc_info=True)
