@@ -1,25 +1,32 @@
 import pytest
 
-from review_pr.pr_url import extract_pr_url
+from review_pr.pr_url import extract_pr_urls
 
 
 @pytest.mark.parametrize(
     "text, expected",
     [
-        ("https://github.com/org/repo/pull/123", "https://github.com/org/repo/pull/123"),
-        ("please merge https://github.com/org/repo/pull/7 thanks", "https://github.com/org/repo/pull/7"),
-        ("(https://github.com/org/repo/pull/42)", "https://github.com/org/repo/pull/42"),
-        ("see https://github.com/org/repo/pull/42.", "https://github.com/org/repo/pull/42"),
-        ("http://github.com/a/b/pull/1", "http://github.com/a/b/pull/1"),
-        ("with.dots/and-dashes https://github.com/my-org/my.repo/pull/99", "https://github.com/my-org/my.repo/pull/99"),
+        ("https://github.com/org/repo/pull/123", ["https://github.com/org/repo/pull/123"]),
+        ("please merge https://github.com/org/repo/pull/7 thanks", ["https://github.com/org/repo/pull/7"]),
+        ("(https://github.com/org/repo/pull/42)", ["https://github.com/org/repo/pull/42"]),
+        ("see https://github.com/org/repo/pull/42.", ["https://github.com/org/repo/pull/42"]),
+        ("http://github.com/a/b/pull/1", ["http://github.com/a/b/pull/1"]),
+        (
+            "with.dots/and-dashes https://github.com/my-org/my.repo/pull/99",
+            ["https://github.com/my-org/my.repo/pull/99"],
+        ),
         (
             "first https://github.com/org/repo/pull/1 second https://github.com/org/repo/pull/2",
-            "https://github.com/org/repo/pull/1",
+            ["https://github.com/org/repo/pull/1", "https://github.com/org/repo/pull/2"],
+        ),
+        (
+            "same twice https://github.com/org/repo/pull/1 and https://github.com/org/repo/pull/1",
+            ["https://github.com/org/repo/pull/1"],
         ),
     ],
 )
-def test_extracts_pr_url(text, expected):
-    assert extract_pr_url(text) == expected
+def test_extracts_unique_pr_urls(text, expected):
+    assert extract_pr_urls(text) == expected
 
 
 @pytest.mark.parametrize(
@@ -33,5 +40,5 @@ def test_extracts_pr_url(text, expected):
         "just talking about a pull request",
     ],
 )
-def test_returns_none_when_no_pr_url(text):
-    assert extract_pr_url(text) is None
+def test_returns_empty_when_no_pr_url(text):
+    assert extract_pr_urls(text) == []

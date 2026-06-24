@@ -53,7 +53,7 @@ and saves the new name.
 | `scripts/renew_cron.sh` | wrapper a scheduler calls; runs `ensure` | tracked |
 | `.keys/oauth_client.json` | OAuth client (Desktop) used for user sign-in | **ignored** |
 | `.keys/token.json` | saved user creds incl. refresh token (headless renew) | **ignored** |
-| `.keys/subscription_AAQAXYyFGos.txt` | the active subscription's resource name | **ignored** |
+| `.keys/subscription_AAQA1ukurw4.txt` | the active subscription's resource name | **ignored** |
 | `.keys/review-pr-500320-*.json` | GCP service account key (Pub/Sub) | **ignored** |
 
 `.keys/` is git-ignored so none of these secrets are ever committed. Everything the renewal
@@ -62,7 +62,7 @@ needs lives outside `temp/` (which is throwaway/ignored) so it survives.
 ## Renew manually
 
 ```bash
-poetry run python scripts/manage_subscription.py ensure spaces/AAQAXYyFGos
+poetry run python scripts/manage_subscription.py ensure spaces/AAQA1ukurw4
 ```
 
 Run this any time within 4h of the last renewal. That's all renewal *is* — the rest is just
@@ -117,11 +117,25 @@ Caveats: launchd only fires while the Mac is awake; a missed window (laptop asle
 subscription lapse — `ensure` handles that by recreating it on the next run. The subscriber
 (`review-pr-bot`) is a separate process; it must also be running to actually log the events.
 
+## Installed on this machine
+
+The LaunchAgent above is **installed and active** on this Mac:
+
+- Plist: `~/Library/LaunchAgents/com.review-pr.events-renew.plist` (fires `scripts/renew_cron.sh`
+  every `10800`s / 3h, plus at login via `RunAtLoad`).
+- Loaded with `launchctl load`; `launchctl list | grep review-pr` shows `com.review-pr.events-renew`.
+- First run (triggered by `RunAtLoad`): the stored subscription had lapsed and renew returned `403`,
+  so `ensure` transparently **recreated** it — exactly the recovery path described above. Renewal
+  output is appended to `temp/renew.log`; launchd's own stdout/stderr go to
+  `temp/renew.launchd.out.log` / `temp/renew.launchd.err.log`.
+
+To stop it: `launchctl unload ~/Library/LaunchAgents/com.review-pr.events-renew.plist`.
+
 ## Troubleshooting
 
 - **Renew returns 401/invalid_grant:** the refresh token was revoked. Delete `.keys/token.json`
   and run `ensure` once interactively to re-authorize.
 - **No events despite ACTIVE subscription:** confirm `chat-api-push@system.gserviceaccount.com`
   still has **Pub/Sub Publisher** on the topic, and that the subscriber is running.
-- **Wrong space:** the subscription targets `spaces/AAQAXYyFGos`. To switch, run
+- **Wrong space:** the subscription targets `spaces/AAQA1ukurw4`. To switch, run
   `ensure spaces/<NEW_ID>` and update `GOOGLE_CHAT_SPACE_ID` in `.env`.

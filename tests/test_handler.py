@@ -13,34 +13,43 @@ MESSAGE = "spaces/TEST/messages/M1"
 
 
 @pytest.fixture(autouse=True)
-def _clear_dedup():
-    """Reset the dedup history so each test's message id is seen as fresh."""
+def _clear_dedup(tmp_path, monkeypatch):
+    """Reset the dedup history (and redirect its file) so each test's message id is fresh."""
+    monkeypatch.setattr(dedup, "_DEDUP_FILE", tmp_path / "dedup.json")
     dedup._seen.clear()
+    monkeypatch.setattr(dedup, "_loaded", True)  # empty + loaded: no read of the real file
     yield
     dedup._seen.clear()
 
 
-def _event(text, space=SPACE, thread=THREAD, sender_type="HUMAN", message_name=MESSAGE):
+def _event(text, space=SPACE, thread=THREAD, sender_type="HUMAN", message_name=MESSAGE, thread_reply=False):
     """A Workspace Events message payload (no top-level "type")."""
-    return {
-        "space": {"name": space},
-        "message": {
-            "name": message_name,
-            "text": text,
-            "thread": {"name": thread},
-            "sender": {"type": sender_type},
-        },
+    message = {
+        "name": message_name,
+        "text": text,
+        "thread": {"name": thread},
+        "sender": {"type": sender_type},
     }
+    if thread_reply:
+        message["threadReply"] = True
+    return {"space": {"name": space}, "message": message}
 
 
-def _status(state="OPEN", is_draft=False, author="pr-author", base_branch="feature/x"):
+def _status(
+    state="OPEN",
+    is_draft=False,
+    author="pr-author",
+    base_branch="feature/x",
+    mergeable="MERGEABLE",
+    merge_state="CLEAN",
+):
     return PrStatus(
         state=state,
         is_draft=is_draft,
         author=author,
         base_branch=base_branch,
-        mergeable="MERGEABLE",
-        merge_state="CLEAN",
+        mergeable=mergeable,
+        merge_state=merge_state,
     )
 
 
@@ -87,6 +96,22 @@ def test_non_human_sender_is_ignored():
     react.assert_not_called()
 
 
+def test_thread_reply_message_is_ignored():
+    # Replies inside a thread are skipped entirely, even with a valid PR link: no lookup/reply/react.
+    with (
+        patch.object(handler, "get_pr_status") as status,
+        patch.object(handler, "approve_and_merge") as merge,
+        patch.object(handler, "post_message") as post,
+        patch.object(handler, "add_reaction") as react,
+    ):
+        handler.handle_chat_event(_event(URL, thread_reply=True))
+
+    status.assert_not_called()
+    merge.assert_not_called()
+    post.assert_not_called()
+    react.assert_not_called()
+
+
 def test_message_without_pr_url_replies_no_link_and_reacts():
     with (
         patch.object(handler, "get_pr_status") as status,
@@ -101,6 +126,41 @@ def test_message_without_pr_url_replies_no_link_and_reacts():
     assert thread == THREAD
     post.assert_called_once()
     react.assert_called_once_with(MESSAGE, handler.EMOJI_NO_LINK)
+
+
+def test_multiple_pr_links_replies_and_takes_no_action():
+    # More than one distinct PR link is ambiguous: reply, react, and never touch gh.
+    second = "https://github.com/org/repo/pull/2"
+    with (
+        patch.object(handler, "get_pr_status") as status,
+        patch.object(handler, "approve_and_merge") as merge,
+        patch.object(handler, "post_message") as post,
+        patch.object(handler, "add_reaction") as react,
+    ):
+        handler.handle_chat_event(_event(f"merge {URL} and {second}"))
+
+    status.assert_not_called()
+    merge.assert_not_called()
+    text, thread = post.call_args[0]
+    assert "more than one PR link" in text
+    assert thread == THREAD
+    post.assert_called_once()
+    react.assert_called_once_with(MESSAGE, handler.EMOJI_MULTI)
+
+
+def test_same_pr_link_twice_is_processed_once():
+    # A duplicate of the same URL counts as one link and is still approved + merged.
+    with (
+        patch.object(handler, "get_pr_status", return_value=_status()),
+        patch.object(handler, "approve_and_merge", return_value="bot-one") as merge,
+        patch.object(handler, "post_message") as post,
+        patch.object(handler, "add_reaction") as react,
+    ):
+        handler.handle_chat_event(_event(f"{URL} {URL}"))
+
+    merge.assert_called_once_with(URL, "pr-author")
+    post.assert_called_once_with("✅ *Approved & merged!* Approved by bot-one, branch deleted. 🎉", THREAD)
+    react.assert_called_once_with(MESSAGE, EMOJI_DONE)
 
 
 def test_already_merged_reacts_noop_and_skips():
@@ -202,6 +262,41 @@ def test_protected_base_branch_is_not_merged(branch):
     assert branch in text
     assert "not allowed to merge" in text
     react.assert_called_once_with(MESSAGE, EMOJI_ATTENTION)
+
+
+@pytest.mark.parametrize(
+    "mergeable,merge_state",
+    [("CONFLICTING", "CLEAN"), ("MERGEABLE", "DIRTY"), ("CONFLICTING", "DIRTY")],
+)
+def test_conflicting_pr_declines_without_approving(mergeable, merge_state):
+    with (
+        patch.object(handler, "get_pr_status",
+                     return_value=_status(mergeable=mergeable, merge_state=merge_state)),
+        patch.object(handler, "approve_and_merge") as merge,
+        patch.object(handler, "post_message") as post,
+        patch.object(handler, "add_reaction") as react,
+    ):
+        handler.handle_chat_event(_event(URL))
+
+    merge.assert_not_called()
+    text, thread = post.call_args[0]
+    assert "merge conflicts" in text
+    assert thread == THREAD
+    react.assert_called_once_with(MESSAGE, EMOJI_ATTENTION)
+
+
+def test_unknown_mergeability_still_approves():
+    # GitHub may not have computed mergeability yet; UNKNOWN must NOT block approval.
+    with (
+        patch.object(handler, "get_pr_status",
+                     return_value=_status(mergeable="UNKNOWN", merge_state="UNKNOWN")),
+        patch.object(handler, "approve_and_merge", return_value="bot-one") as merge,
+        patch.object(handler, "post_message"),
+        patch.object(handler, "add_reaction"),
+    ):
+        handler.handle_chat_event(_event(URL))
+
+    merge.assert_called_once_with(URL, "pr-author")
 
 
 def test_duplicate_delivery_is_processed_once():

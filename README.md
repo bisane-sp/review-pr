@@ -15,7 +15,7 @@ Google Chat space ──publishes MESSAGE event──▶ Pub/Sub topic ──pul
                     1. only act on MESSAGE events from the configured space
                     2. extract the first GitHub PR URL from the text
                     3. look up the PR author; pick the non-author account
-                    4. gh pr review <url> --approve --body "lgtm."
+                    4. gh pr review <url> --approve --body ""
                     5. gh pr merge  <url> --merge --delete-branch
                     6. post "✅ Merged <url> (approved by <account>)" into the thread
 ```

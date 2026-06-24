@@ -14,16 +14,27 @@ class Settings(BaseSettings):
     github_account_2: str
     github_token_2: str
     gh_timeout_seconds: int = 60
+    # Console log verbosity (the log file is always DEBUG). One of DEBUG/INFO/WARNING/ERROR/CRITICAL.
+    log_level: str = "INFO"
+
+    # Only used by utils/create_space_subscription.py (one-off setup).
+    chat_events_topic: str = ""
+    oauth_client_secrets: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     @property
     def github_accounts(self) -> list[tuple[str, str]]:
-        """The configured (account login, token) pairs, in priority order."""
-        return [
+        """The configured (account login, token) pairs, in priority order.
+
+        Pairs with a blank login or token are dropped, so an unconfigured second account is simply
+        absent rather than letting gh fall back to the machine's logged-in user.
+        """
+        pairs = [
             (self.github_account_1, self.github_token_1),
             (self.github_account_2, self.github_token_2),
         ]
+        return [(account, token) for account, token in pairs if account.strip() and token.strip()]
 
 
 settings = Settings()

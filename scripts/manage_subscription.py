@@ -9,10 +9,13 @@ Credentials (with refresh token) are persisted to `.keys/token.json` so renew/en
 headless after the first browser sign-in. Uses the same OAuth client that created the
 subscription (`.keys/oauth_client.json`).
 
+The space defaults to GOOGLE_CHAT_SPACE_ID from .env (read via review_pr.config.settings); pass a
+`spaces/...` argument only to override it.
+
 Usage:
-  poetry run python scripts/manage_subscription.py ensure spaces/AAQAXYyFGos   # renew, else create
-  poetry run python scripts/manage_subscription.py create spaces/AAQAXYyFGos
-  poetry run python scripts/manage_subscription.py renew  spaces/AAQAXYyFGos
+  poetry run python scripts/manage_subscription.py ensure                 # space from .env; renew, else create
+  poetry run python scripts/manage_subscription.py create [spaces/XXXX]
+  poetry run python scripts/manage_subscription.py renew  [spaces/XXXX]
   poetry run python scripts/manage_subscription.py delete subscriptions/XXXX
 """
 
@@ -24,6 +27,8 @@ import requests
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
+
+from review_pr.config import settings
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 KEYS = PROJECT_ROOT / ".keys"
@@ -105,16 +110,20 @@ def ensure(creds: Credentials, space: str) -> None:
 
 
 def main() -> None:
-    action, target = sys.argv[1], sys.argv[2]
+    action = sys.argv[1]
+    target = sys.argv[2] if len(sys.argv) > 2 else None
     creds = get_creds()
     if action == "create":
-        create(creds, target)
+        create(creds, target or settings.google_chat_space_id)
     elif action == "renew":
-        renew(creds, _name_file(target).read_text().strip() if target.startswith("spaces/") else target)
+        ref = target or settings.google_chat_space_id
+        renew(creds, _name_file(ref).read_text().strip() if ref.startswith("spaces/") else ref)
     elif action == "delete":
+        if not target:
+            raise SystemExit("delete requires a subscriptions/... resource name")
         delete(creds, target)
     elif action == "ensure":
-        ensure(creds, target)
+        ensure(creds, target or settings.google_chat_space_id)
     else:
         raise SystemExit(f"unknown action: {action}")
 
