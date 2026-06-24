@@ -11,6 +11,7 @@ class ParsedEvent:
     space_name: str
     text: str
     thread_name: str | None
+    thread_reply: bool  # True when the message is a reply inside an existing thread
     sender_type: str | None
     message_name: str | None
 
@@ -31,6 +32,7 @@ def parse_message_event(payload: dict) -> ParsedEvent:
         space_name=space.get("name", ""),
         text=message.get("text", ""),
         thread_name=thread.get("name") or None,
+        thread_reply=bool(message.get("threadReply", False)),
         sender_type=sender.get("type"),
         message_name=message.get("name") or None,
     )

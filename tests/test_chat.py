@@ -19,6 +19,13 @@ def test_parse_workspace_events_message():
     assert event.thread_name == "spaces/AAAA/threads/T1"
     assert event.sender_type == "HUMAN"
     assert event.message_name == "spaces/AAAA/messages/M1"
+    assert event.thread_reply is False  # top-level message: no threadReply key
+
+
+def test_parse_thread_reply_flag():
+    payload = {"message": {"text": "reply", "threadReply": True, "space": {"name": "spaces/AAAA"}}}
+    event = parse_message_event(payload)
+    assert event.thread_reply is True
 
 
 def test_parse_falls_back_to_message_space():
@@ -39,5 +46,6 @@ def test_parse_handles_missing_keys():
     assert event.space_name == ""
     assert event.text == ""
     assert event.thread_name is None
+    assert event.thread_reply is False
     assert event.sender_type is None
     assert event.message_name is None

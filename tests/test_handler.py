@@ -22,17 +22,17 @@ def _clear_dedup(tmp_path, monkeypatch):
     dedup._seen.clear()
 
 
-def _event(text, space=SPACE, thread=THREAD, sender_type="HUMAN", message_name=MESSAGE):
+def _event(text, space=SPACE, thread=THREAD, sender_type="HUMAN", message_name=MESSAGE, thread_reply=False):
     """A Workspace Events message payload (no top-level "type")."""
-    return {
-        "space": {"name": space},
-        "message": {
-            "name": message_name,
-            "text": text,
-            "thread": {"name": thread},
-            "sender": {"type": sender_type},
-        },
+    message = {
+        "name": message_name,
+        "text": text,
+        "thread": {"name": thread},
+        "sender": {"type": sender_type},
     }
+    if thread_reply:
+        message["threadReply"] = True
+    return {"space": {"name": space}, "message": message}
 
 
 def _status(
@@ -89,6 +89,22 @@ def test_non_human_sender_is_ignored():
         patch.object(handler, "add_reaction") as react,
     ):
         handler.handle_chat_event(_event(f"✅ Approved & merged {URL}", sender_type="BOT"))
+
+    status.assert_not_called()
+    merge.assert_not_called()
+    post.assert_not_called()
+    react.assert_not_called()
+
+
+def test_thread_reply_message_is_ignored():
+    # Replies inside a thread are skipped entirely, even with a valid PR link: no lookup/reply/react.
+    with (
+        patch.object(handler, "get_pr_status") as status,
+        patch.object(handler, "approve_and_merge") as merge,
+        patch.object(handler, "post_message") as post,
+        patch.object(handler, "add_reaction") as react,
+    ):
+        handler.handle_chat_event(_event(URL, thread_reply=True))
 
     status.assert_not_called()
     merge.assert_not_called()

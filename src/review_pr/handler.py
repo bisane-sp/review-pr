@@ -53,6 +53,11 @@ def handle_chat_event(payload: dict) -> None:
     if event.sender_type != "HUMAN":
         return
 
+    # Only act on top-level space messages. Replies inside a thread are ignored entirely
+    # (no reply, no reaction) — same silent-skip style as the space/sender guards above.
+    if event.thread_reply:
+        return
+
     # Dedup guard: Pub/Sub is at-least-once and the callback runs on multiple threads, so the same
     # message can arrive twice. Claim it once; skip any redelivery to avoid a double approve/merge.
     if event.message_name and not claim(event.message_name):
