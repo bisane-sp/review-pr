@@ -17,8 +17,8 @@ _FILE_FORMAT = (
     "%(name)s | %(module)s:%(funcName)s:%(lineno)d | %(message)s"
 )
 _CONSOLE_FORMAT = (
-    "%(log_color)s%(asctime)s.%(msecs)03d | %(levelname)-8s | pid:%(process)d | %(threadName)s | "
-    "%(name)s | %(module)s:%(funcName)s:%(lineno)d | %(message)s%(reset)s"
+    "%(asctime)s.%(msecs)03d | %(log_color)s%(levelname)-8s%(reset)s | pid:%(process)d | %(threadName)s | "
+    "%(name)s | %(module)s:%(funcName)s:%(lineno)d | %(message)s"
 )
 _LEVEL_COLORS = {
     "DEBUG": "cyan",
