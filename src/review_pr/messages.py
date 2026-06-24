@@ -28,6 +28,12 @@ _RULES: list[tuple[str, tuple[str, ...], str]] = [
     ),
     (
         "lookup",
+        ("no github account configured",),
+        "❌ I don't have GitHub account credentials configured to approve and merge this PR. "
+        "Please set them up first.",
+    ),
+    (
+        "lookup",
         ("not found", "404", "could not resolve", "no such"),
         "❌ I couldn't find this PR or I don't have access. Check the link and that I'm added to the "
         "repo.",

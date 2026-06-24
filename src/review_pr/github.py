@@ -98,7 +98,10 @@ def get_pr_status(url: str) -> PrStatus:
 
     Raises ``GhError`` with ``step="lookup"`` if the PR can't be read.
     """
-    _, token = settings.github_accounts[0]
+    accounts = settings.github_accounts
+    if not accounts:
+        raise GhError("lookup", "no GitHub account configured")
+    _, token = accounts[0]
     out = _run_gh(
         ["gh", "pr", "view", url, "--json", "state,isDraft,author,baseRefName,mergeable,mergeStateStatus"],
         "lookup",
