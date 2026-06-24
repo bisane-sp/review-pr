@@ -13,9 +13,11 @@ MESSAGE = "spaces/TEST/messages/M1"
 
 
 @pytest.fixture(autouse=True)
-def _clear_dedup():
-    """Reset the dedup history so each test's message id is seen as fresh."""
+def _clear_dedup(tmp_path, monkeypatch):
+    """Reset the dedup history (and redirect its file) so each test's message id is fresh."""
+    monkeypatch.setattr(dedup, "_DEDUP_FILE", tmp_path / "dedup.json")
     dedup._seen.clear()
+    monkeypatch.setattr(dedup, "_loaded", True)  # empty + loaded: no read of the real file
     yield
     dedup._seen.clear()
 
