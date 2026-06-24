@@ -18,7 +18,7 @@ def _callback(message: "pubsub_v1.subscriber.message.Message") -> None:
     """Decode a Pub/Sub message into a Chat event and handle it. Always ack."""
     try:
         payload = json.loads(message.data)
-        logger.info("Raw Pub/Sub message: %s", payload)
+        logger.debug("Raw Pub/Sub message: %s", payload)
         handle_chat_event(payload)
     except Exception:
         logger.exception("Failed to handle Pub/Sub message")
