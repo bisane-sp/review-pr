@@ -117,6 +117,20 @@ Caveats: launchd only fires while the Mac is awake; a missed window (laptop asle
 subscription lapse — `ensure` handles that by recreating it on the next run. The subscriber
 (`review-pr-bot`) is a separate process; it must also be running to actually log the events.
 
+## Installed on this machine
+
+The LaunchAgent above is **installed and active** on this Mac:
+
+- Plist: `~/Library/LaunchAgents/com.review-pr.events-renew.plist` (fires `scripts/renew_cron.sh`
+  every `10800`s / 3h, plus at login via `RunAtLoad`).
+- Loaded with `launchctl load`; `launchctl list | grep review-pr` shows `com.review-pr.events-renew`.
+- First run (triggered by `RunAtLoad`): the stored subscription had lapsed and renew returned `403`,
+  so `ensure` transparently **recreated** it — exactly the recovery path described above. Renewal
+  output is appended to `temp/renew.log`; launchd's own stdout/stderr go to
+  `temp/renew.launchd.out.log` / `temp/renew.launchd.err.log`.
+
+To stop it: `launchctl unload ~/Library/LaunchAgents/com.review-pr.events-renew.plist`.
+
 ## Troubleshooting
 
 - **Renew returns 401/invalid_grant:** the refresh token was revoked. Delete `.keys/token.json`
