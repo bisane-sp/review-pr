@@ -39,6 +39,17 @@ def test_corrupt_file_starts_empty():
     assert dedup.claim("spaces/X/messages/1") is True
 
 
+def test_save_failure_does_not_raise(monkeypatch):
+    # A persistence failure must not break claim() — claim is called outside the handler's
+    # try/except, so a raised OSError would skip the user's reply/reaction.
+    def _boom(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(dedup.Path, "mkdir", _boom)
+    assert dedup.claim("spaces/X/messages/1") is True   # no exception
+    assert dedup.claim("spaces/X/messages/1") is False  # in-memory dedup still works
+
+
 def test_bound_is_enforced_and_mirrored(monkeypatch):
     monkeypatch.setattr(dedup, "_MAX_REMEMBERED", 3)
     for i in range(4):

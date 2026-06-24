@@ -10,10 +10,13 @@ process restart is still recognised and correctly rejected.
 """
 
 import json
+import logging
 import os
 import threading
 from collections import OrderedDict
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # Bound the history so a long-running subscriber doesn't grow without limit; the oldest id drops out.
 _MAX_REMEMBERED = 1000
@@ -43,13 +46,18 @@ def _load() -> None:
 def _save() -> None:
     """Atomically mirror ``_seen`` to the dedup file (temp file + ``os.replace``).
 
-    Any ``OSError`` propagates by design — unlike ``_load`` it is not swallowed, so a failure to
-    persist surfaces to the caller rather than silently losing dedup state.
+    Best-effort: an ``OSError`` is logged and swallowed, never raised. ``claim`` is called outside
+    the handler's try/except, so a persistence failure must not abort the reply/reaction; the
+    in-memory ``_seen`` still guards against double-processing within this process, and restart
+    survival is the only thing degraded.
     """
-    _DEDUP_FILE.parent.mkdir(parents=True, exist_ok=True)
-    tmp = _DEDUP_FILE.with_name(_DEDUP_FILE.name + ".tmp")
-    tmp.write_text(json.dumps(list(_seen)), encoding="utf-8")
-    os.replace(tmp, _DEDUP_FILE)
+    try:
+        _DEDUP_FILE.parent.mkdir(parents=True, exist_ok=True)
+        tmp = _DEDUP_FILE.with_name(_DEDUP_FILE.name + ".tmp")
+        tmp.write_text(json.dumps(list(_seen)), encoding="utf-8")
+        os.replace(tmp, _DEDUP_FILE)
+    except OSError:
+        logger.warning("Failed to persist dedup state to %s", _DEDUP_FILE, exc_info=True)
 
 
 def claim(message_name: str) -> bool:

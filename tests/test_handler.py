@@ -228,7 +228,9 @@ def test_conflicting_pr_declines_without_approving(mergeable, merge_state):
         handler.handle_chat_event(_event(URL))
 
     merge.assert_not_called()
-    assert "merge conflicts" in post.call_args[0][0]
+    text, thread = post.call_args[0]
+    assert "merge conflicts" in text
+    assert thread == THREAD
     react.assert_called_once_with(MESSAGE, EMOJI_ATTENTION)
 
 
