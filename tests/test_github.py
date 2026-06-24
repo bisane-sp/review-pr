@@ -81,6 +81,15 @@ def test_get_pr_status_missing_gh_raises():
 # --- subprocess environment ------------------------------------------------
 
 
+def test_blank_token_refuses_to_run_gh():
+    # A blank token must never reach gh, or gh would fall back to the local terminal login.
+    with patch.object(github.subprocess, "run") as run:
+        with pytest.raises(GhError) as exc:
+            github._run_gh(["gh", "api", "user"], "lookup", "   ")
+    assert exc.value.step == "lookup"
+    assert run.call_count == 0  # gh never invoked
+
+
 def test_gh_env_passes_token_but_not_unrelated_secrets(monkeypatch):
     # An unrelated secret in the parent env must NOT reach the gh subprocess.
     monkeypatch.setenv("UNRELATED_SECRET", "do-not-leak")

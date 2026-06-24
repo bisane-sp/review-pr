@@ -25,11 +25,16 @@ class Settings(BaseSettings):
 
     @property
     def github_accounts(self) -> list[tuple[str, str]]:
-        """The configured (account login, token) pairs, in priority order."""
-        return [
+        """The configured (account login, token) pairs, in priority order.
+
+        Pairs with a blank login or token are dropped, so an unconfigured second account is simply
+        absent rather than letting gh fall back to the machine's logged-in user.
+        """
+        pairs = [
             (self.github_account_1, self.github_token_1),
             (self.github_account_2, self.github_token_2),
         ]
+        return [(account, token) for account, token in pairs if account.strip() and token.strip()]
 
 
 settings = Settings()

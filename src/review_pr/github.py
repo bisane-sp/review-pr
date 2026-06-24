@@ -48,6 +48,10 @@ def _run_gh(args: list[str], step: str, token: str) -> str:
 
     Returns the command's stripped stdout.
     """
+    # A blank GH_TOKEN makes gh silently fall back to the locally logged-in account. Refuse to run
+    # rather than act as whatever account happens to be logged in on this machine.
+    if not token.strip():
+        raise GhError(step, "no GitHub token configured for this account (refusing to use local gh login)")
     env = _gh_env(token)
     logger.debug("gh %s: running %s", step, " ".join(args))  # token is in env, never in args
     try:
