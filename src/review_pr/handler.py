@@ -1,0 +1,92 @@
+"""Process a single Google Chat event: detect a PR link, approve + merge, reply + react.
+
+Replies into the message's thread for *every* human message in the configured space, and adds an
+emoji reaction to the original message summarising the outcome:
+  ✅ approved + merged   🚫 already merged (no action needed)   ⚠️ needs the user's action
+For a PR link, *every* outcome is reported — PR status, the approve/merge result, a lookup
+failure, or any unexpected error. No PR link ever goes unanswered.
+"""
+
+import logging
+from dataclasses import dataclass
+
+from .chat import parse_message_event
+from .config import settings
+from .github import GhError, approve_and_merge, get_pr_status
+from .notify import post_message
+from .pr_url import extract_pr_url
+from .reactions import add_reaction
+
+logger = logging.getLogger(__name__)
+
+# Reaction emojis by outcome category.
+EMOJI_DONE = "✅"  # the app approved + merged
+EMOJI_NOOP = "🚫"  # already merged — nothing for anyone to do
+EMOJI_ATTENTION = "⚠️"  # the user needs to act (closed/draft/blocked/failed/error)
+
+
+@dataclass
+class Outcome:
+    """A reaction emoji plus the thread reply text for one processed PR link."""
+
+    emoji: str
+    text: str
+
+
+def handle_chat_event(payload: dict) -> None:
+    """Handle one Chat event. Acts only on human messages from the configured space."""
+    event = parse_message_event(payload)
+
+    if event.space_name != settings.google_chat_space_id:
+        return
+
+    # Loop guard: only respond to humans. The bot's own webhook replies arrive as non-HUMAN
+    # senders; replying to those would trigger an infinite loop.
+    if event.sender_type != "HUMAN":
+        return
+
+    logger.info("Message in %s: %s", event.space_name, event.text)
+
+    url = extract_pr_url(event.text)
+    if not url:
+        post_message("🔍 No GitHub PR link found in this message.", event.thread_name)
+        return
+
+    # Every branch below resolves to exactly one outcome, so a PR link is never left unanswered.
+    try:
+        outcome = _process_pr(url)
+    except GhError as exc:
+        outcome = _gh_error_outcome(url, exc)
+    except Exception:
+        logger.exception("Unexpected error handling %s", url)
+        outcome = Outcome(EMOJI_ATTENTION, f"❌ Unexpected error while handling {url}. Check the bot logs.")
+
+    post_message(outcome.text, event.thread_name)
+    if event.message_name:
+        add_reaction(event.message_name, outcome.emoji)
+
+
+def _process_pr(url: str) -> Outcome:
+    """Look up the PR, then approve + merge it when eligible. Returns the outcome.
+
+    Raises ``GhError`` for any ``gh`` failure (handled by the caller's catch-all).
+    """
+    status = get_pr_status(url)
+    if status.state == "MERGED":
+        return Outcome(EMOJI_NOOP, f"ℹ️ Already merged — nothing to do: {url}")
+    if status.state == "CLOSED":
+        return Outcome(EMOJI_ATTENTION, f"🚫 PR is closed — skipping: {url}")
+    if status.is_draft:
+        return Outcome(EMOJI_ATTENTION, f"📝 PR is a draft — not approving/merging: {url}")
+
+    account = approve_and_merge(url, status.author)
+    return Outcome(EMOJI_DONE, f"✅ Approved & merged {url} (by {account})")
+
+
+def _gh_error_outcome(url: str, exc: GhError) -> Outcome:
+    """Map a ``GhError`` to the outcome for its failing step (always needs the user's attention)."""
+    if exc.step == "lookup":
+        return Outcome(EMOJI_ATTENTION, f"❌ Couldn't read PR {url}: {exc.message}")
+    if exc.step == "merge":
+        return Outcome(EMOJI_ATTENTION, f"⚠️ Approved but merge failed for {url}: {exc.message}")
+    return Outcome(EMOJI_ATTENTION, f"❌ Failed to approve {url}: {exc.message}")
