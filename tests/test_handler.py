@@ -37,7 +37,7 @@ def test_open_pr_approves_merges_replies_and_reacts():
         handler.handle_chat_event(_event(URL))
 
     merge.assert_called_once_with(URL, "pr-author")
-    post.assert_called_once_with(f"✅ Approved & merged {URL} (by bot-one)", THREAD)
+    post.assert_called_once_with("✅ *Approved & merged!* Approved by bot-one, branch deleted. 🎉", THREAD)
     react.assert_called_once_with(MESSAGE, EMOJI_DONE)
 
 
@@ -79,7 +79,10 @@ def test_message_without_pr_url_replies_no_link_and_does_not_react():
         handler.handle_chat_event(_event("good morning team"))
 
     status.assert_not_called()
-    post.assert_called_once_with("🔍 No GitHub PR link found in this message.", THREAD)
+    text, thread = post.call_args[0]
+    assert "didn't spot a GitHub PR link" in text
+    assert thread == THREAD
+    post.assert_called_once()
     react.assert_not_called()
 
 
@@ -93,7 +96,7 @@ def test_already_merged_reacts_noop_and_skips():
         handler.handle_chat_event(_event(URL))
 
     merge.assert_not_called()
-    assert "Already merged" in post.call_args[0][0]
+    assert "already merged" in post.call_args[0][0]
     react.assert_called_once_with(MESSAGE, EMOJI_NOOP)
 
 
@@ -135,7 +138,7 @@ def test_lookup_failure_reacts_attention_and_replies():
         handler.handle_chat_event(_event(URL))
 
     merge.assert_not_called()
-    assert "Couldn't read PR" in post.call_args[0][0]
+    assert "couldn't find" in post.call_args[0][0]
     react.assert_called_once_with(MESSAGE, EMOJI_ATTENTION)
 
 
@@ -149,7 +152,7 @@ def test_approve_failure_reacts_attention_and_replies():
         handler.handle_chat_event(_event(URL))
 
     text, thread = post.call_args[0]
-    assert "Failed to approve" in text
+    assert "couldn't approve" in text
     assert thread == THREAD
     react.assert_called_once_with(MESSAGE, EMOJI_ATTENTION)
 
@@ -163,7 +166,7 @@ def test_merge_failure_reacts_attention_and_replies():
     ):
         handler.handle_chat_event(_event(URL))
 
-    assert "Approved but merge failed" in post.call_args[0][0]
+    assert "merge didn't go through" in post.call_args[0][0]
     react.assert_called_once_with(MESSAGE, EMOJI_ATTENTION)
 
 
@@ -177,6 +180,6 @@ def test_unexpected_error_still_replies_and_reacts():
         handler.handle_chat_event(_event(URL))
 
     text, thread = post.call_args[0]
-    assert "Unexpected error" in text
+    assert "went wrong" in text
     assert thread == THREAD
     react.assert_called_once_with(MESSAGE, EMOJI_ATTENTION)
