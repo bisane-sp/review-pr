@@ -53,7 +53,7 @@ and saves the new name.
 | `scripts/renew_cron.sh` | wrapper a scheduler calls; runs `ensure` | tracked |
 | `.keys/oauth_client.json` | OAuth client (Desktop) used for user sign-in | **ignored** |
 | `.keys/token.json` | saved user creds incl. refresh token (headless renew) | **ignored** |
-| `.keys/subscription_AAQAXYyFGos.txt` | the active subscription's resource name | **ignored** |
+| `.keys/subscription_AAQA1ukurw4.txt` | the active subscription's resource name | **ignored** |
 | `.keys/review-pr-500320-*.json` | GCP service account key (Pub/Sub) | **ignored** |
 
 `.keys/` is git-ignored so none of these secrets are ever committed. Everything the renewal
@@ -62,7 +62,7 @@ needs lives outside `temp/` (which is throwaway/ignored) so it survives.
 ## Renew manually
 
 ```bash
-poetry run python scripts/manage_subscription.py ensure spaces/AAQAXYyFGos
+poetry run python scripts/manage_subscription.py ensure spaces/AAQA1ukurw4
 ```
 
 Run this any time within 4h of the last renewal. That's all renewal *is* — the rest is just
@@ -137,5 +137,5 @@ To stop it: `launchctl unload ~/Library/LaunchAgents/com.review-pr.events-renew.
   and run `ensure` once interactively to re-authorize.
 - **No events despite ACTIVE subscription:** confirm `chat-api-push@system.gserviceaccount.com`
   still has **Pub/Sub Publisher** on the topic, and that the subscriber is running.
-- **Wrong space:** the subscription targets `spaces/AAQAXYyFGos`. To switch, run
+- **Wrong space:** the subscription targets `spaces/AAQA1ukurw4`. To switch, run
   `ensure spaces/<NEW_ID>` and update `GOOGLE_CHAT_SPACE_ID` in `.env`.

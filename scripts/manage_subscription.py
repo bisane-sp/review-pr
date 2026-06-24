@@ -10,9 +10,9 @@ headless after the first browser sign-in. Uses the same OAuth client that create
 subscription (`.keys/oauth_client.json`).
 
 Usage:
-  poetry run python scripts/manage_subscription.py ensure spaces/AAQAXYyFGos   # renew, else create
-  poetry run python scripts/manage_subscription.py create spaces/AAQAXYyFGos
-  poetry run python scripts/manage_subscription.py renew  spaces/AAQAXYyFGos
+  poetry run python scripts/manage_subscription.py ensure spaces/AAQA1ukurw4   # renew, else create
+  poetry run python scripts/manage_subscription.py create spaces/AAQA1ukurw4
+  poetry run python scripts/manage_subscription.py renew  spaces/AAQA1ukurw4
   poetry run python scripts/manage_subscription.py delete subscriptions/XXXX
 """
 
