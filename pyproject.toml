@@ -1,0 +1,32 @@
+[project]
+name = "review-pr"
+version = "0.1.0"
+description = "Google Chat app that approves and merges GitHub PRs via the gh CLI"
+authors = [{ name = "Swaraj Bisane", email = "swaraj.bisane@prezent.ai" }]
+readme = "README.md"
+requires-python = ">=3.12,<4.0"
+dependencies = [
+    "pydantic-settings (>=2.6.0,<3.0.0)",
+    "requests (>=2.32.0,<3.0.0)",
+    "google-cloud-pubsub (>=2.27.0,<3.0.0)",
+    "python-dotenv (>=1.0.0,<2.0.0)",
+    "colorlog (>=6.8.0,<7.0.0)",
+]
+
+[project.scripts]
+review-pr-bot = "review_pr.subscriber:run"
+
+[tool.poetry]
+packages = [{ include = "review_pr", from = "src" }]
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.0"
+ruff = "^0.7.0"
+pre-commit = ">=4.0.0,<5.0.0"
+
+[tool.ruff]
+line-length = 119
+
+[build-system]
+requires = ["poetry-core>=2.0.0"]
+build-backend = "poetry.core.masonry.api"
