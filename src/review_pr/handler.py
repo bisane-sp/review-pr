@@ -16,7 +16,7 @@ from .dedup import claim
 from .github import GhError, approve_and_merge, get_pr_status
 from .messages import friendly_gh_error
 from .notify import post_message
-from .pr_url import extract_pr_url
+from .pr_url import extract_pr_urls
 from .reactions import add_reaction
 
 logger = logging.getLogger(__name__)
@@ -26,6 +26,7 @@ EMOJI_DONE = "✅"  # the app approved + merged
 EMOJI_NOOP = "🚫"  # already merged — nothing for anyone to do
 EMOJI_ATTENTION = "⚠️"  # the user needs to act (closed/draft/blocked/failed/error)
 EMOJI_NO_LINK = "❓"  # no PR link found in the message
+EMOJI_MULTI = "✋"  # more than one PR link — ambiguous, no action taken
 
 # Base branches the bot must never merge into — shared/protected targets that require a human merge.
 # Compared case-insensitively against the PR's base branch.
@@ -60,8 +61,8 @@ def handle_chat_event(payload: dict) -> None:
 
     logger.info("Message in %s: %s", event.space_name, event.text)
 
-    url = extract_pr_url(event.text)
-    if not url:
+    urls = extract_pr_urls(event.text)
+    if not urls:
         post_message(
             "🔍 I didn't spot a GitHub PR link in that message. Drop one in and I'll approve & "
             "merge it for you.",
@@ -70,6 +71,16 @@ def handle_chat_event(payload: dict) -> None:
         if event.message_name:
             add_reaction(event.message_name, EMOJI_NO_LINK)
         return
+    if len(urls) > 1:
+        post_message(
+            "🔀 I found more than one PR link in that message. Please send just one at a time so I "
+            "know which to approve & merge.",
+            event.thread_name,
+        )
+        if event.message_name:
+            add_reaction(event.message_name, EMOJI_MULTI)
+        return
+    url = urls[0]
 
     # Every branch below resolves to exactly one outcome, so a PR link is never left unanswered.
     try:

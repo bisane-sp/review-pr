@@ -112,6 +112,41 @@ def test_message_without_pr_url_replies_no_link_and_reacts():
     react.assert_called_once_with(MESSAGE, handler.EMOJI_NO_LINK)
 
 
+def test_multiple_pr_links_replies_and_takes_no_action():
+    # More than one distinct PR link is ambiguous: reply, react, and never touch gh.
+    second = "https://github.com/org/repo/pull/2"
+    with (
+        patch.object(handler, "get_pr_status") as status,
+        patch.object(handler, "approve_and_merge") as merge,
+        patch.object(handler, "post_message") as post,
+        patch.object(handler, "add_reaction") as react,
+    ):
+        handler.handle_chat_event(_event(f"merge {URL} and {second}"))
+
+    status.assert_not_called()
+    merge.assert_not_called()
+    text, thread = post.call_args[0]
+    assert "more than one PR link" in text
+    assert thread == THREAD
+    post.assert_called_once()
+    react.assert_called_once_with(MESSAGE, handler.EMOJI_MULTI)
+
+
+def test_same_pr_link_twice_is_processed_once():
+    # A duplicate of the same URL counts as one link and is still approved + merged.
+    with (
+        patch.object(handler, "get_pr_status", return_value=_status()),
+        patch.object(handler, "approve_and_merge", return_value="bot-one") as merge,
+        patch.object(handler, "post_message") as post,
+        patch.object(handler, "add_reaction") as react,
+    ):
+        handler.handle_chat_event(_event(f"{URL} {URL}"))
+
+    merge.assert_called_once_with(URL, "pr-author")
+    post.assert_called_once_with("✅ *Approved & merged!* Approved by bot-one, branch deleted. 🎉", THREAD)
+    react.assert_called_once_with(MESSAGE, EMOJI_DONE)
+
+
 def test_already_merged_reacts_noop_and_skips():
     with (
         patch.object(handler, "get_pr_status", return_value=_status(state="MERGED")),
