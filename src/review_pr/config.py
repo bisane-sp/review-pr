@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     github_token_2: str
     gh_timeout_seconds: int = 60
 
+    # Only used by utils/create_space_subscription.py (one-off setup).
+    chat_events_topic: str = ""
+    oauth_client_secrets: str = ""
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     @property
