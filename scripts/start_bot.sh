@@ -11,5 +11,7 @@ if tmux has-session -t "$SESSION" 2>/dev/null; then
   exit 0
 fi
 
-tmux new-session -d -s "$SESSION" -c "$PROJECT_DIR" 'poetry run review-pr-bot'
+# `make run` renews (or creates) the Workspace Events subscription, then starts the bot,
+# so the session always launches with a live subscription.
+tmux new-session -d -s "$SESSION" -c "$PROJECT_DIR" 'make run'
 echo "Started '$SESSION'. Attach with: tmux attach -t $SESSION"
