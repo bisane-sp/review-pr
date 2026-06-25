@@ -101,15 +101,15 @@ that account and merges. Each token is a Personal Access Token with repo + PR pe
 
 ## 4. Keeping it running
 
-Two independent processes — both must be up for the bot to work:
+Just one process to run — the subscriber renews its own subscription:
 
-1. **The subscriber** (`review-pr-bot`) — pulls and processes messages. `scripts/start_bot.sh`
-   launches it in a detached tmux session named `prbot`.
-2. **The renewer** — the Workspace Events subscription has a **~4h TTL** (because the payload
-   includes the full message resource). `scripts/renew_cron.sh` runs
-   `manage_subscription.py ensure` (renew; recreate if lapsed), installed as a **launchd
-   LaunchAgent** firing every 3h and at login. Full instructions + the plist:
-   [`workspace-events-auto-renewal.md`](workspace-events-auto-renewal.md).
+- **The subscriber** (`review-pr-bot`) — pulls and processes messages. `scripts/start_bot.sh`
+  launches it in a detached tmux session named `prbot`.
+- **Self-renewal** — the Workspace Events subscription has a **~4h TTL** (because the payload
+  includes the full message resource). The bot runs a daemon thread that calls
+  `manage_subscription.py ensure` (renew; recreate if lapsed) on startup and every 3h, so no
+  separate scheduler is needed. Details:
+  [`workspace-events-auto-renewal.md`](workspace-events-auto-renewal.md).
 
 Renew manually any time within the TTL window:
 ```bash
@@ -139,8 +139,8 @@ Copy `.env.template` and fill in:
 3. Fill in `.env`.
 4. Create the Workspace Events subscription (opens a browser once for OAuth consent):
    `poetry run python scripts/manage_subscription.py create spaces/AAQA1ukurw4`
-5. Start the bot: `poetry run review-pr-bot` (or `scripts/start_bot.sh`).
-6. Install the renewal LaunchAgent so the subscription never lapses.
-7. Drop a PR link in the space — the bot approves, merges, replies in-thread, and reacts.
+5. Start the bot: `poetry run review-pr-bot` (or `scripts/start_bot.sh`). It renews the
+   subscription on start and every 3h, so it never lapses while the bot runs.
+6. Drop a PR link in the space — the bot approves, merges, replies in-thread, and reacts.
 </content>
 </invoke>

@@ -1,7 +1,7 @@
 .PHONY: run renew bot
 
-# Renew the Chat subscription, then start the bot (foreground).
-run: renew bot
+# Start the bot (foreground). It renews the Chat subscription on start and every 3h itself.
+run: bot
 
 # Renew (or create) the Workspace Events subscription for the space in .env.
 renew:

@@ -112,6 +112,6 @@ is compared against this set case-insensitively; a match requires a human to mer
 - Secrets live in `.env` and `.keys/` (both gitignored). **Never read `.env`** or commit secrets.
 - `reactions.py` needs an authenticated Chat API call (OAuth token in `.keys/token.json`); webhooks
   cannot add reactions. `notify.py` posts via an incoming webhook and is post-only.
-- The Workspace Events subscription expires (≈4h TTL). `scripts/renew_cron.sh` renews it on a
-  schedule, installed as a LaunchAgent. Full setup lives in `docs/google-chat-pubsub-setup.md` and
-  `docs/workspace-events-auto-renewal.md`.
+- The Workspace Events subscription expires (≈4h TTL). The bot renews it itself: `subscriber.py`
+  runs a daemon thread that calls `manage_subscription.py ensure` on startup and every 3h. Full
+  setup lives in `docs/google-chat-pubsub-setup.md` and `docs/workspace-events-auto-renewal.md`.
