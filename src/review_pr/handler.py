@@ -32,6 +32,10 @@ EMOJI_MULTI = "✋"  # more than one PR link — ambiguous, no action taken
 # Compared case-insensitively against the PR's base branch.
 PROTECTED_BASE_BRANCHES = {"prezent", "main", "master"}
 
+# Reply when the PR is already merged and there's nothing for the bot to do — used both for the
+# pre-check and when a human wins the web/bot merge race.
+_ALREADY_MERGED = "🚫 This PR is already merged — nothing for me to do."
+
 
 @dataclass
 class Outcome:
@@ -112,7 +116,7 @@ def _process_pr(url: str) -> Outcome:
     """
     status = get_pr_status(url)
     if status.state == "MERGED":
-        return Outcome(EMOJI_NOOP, "ℹ️ This PR is already merged — nothing for me to do.")
+        return Outcome(EMOJI_NOOP, _ALREADY_MERGED)
     if status.state == "CLOSED":
         return Outcome(EMOJI_ATTENTION, "🚫 This PR is closed, so I'll leave it alone.")
     if status.is_draft:
@@ -132,7 +136,21 @@ def _process_pr(url: str) -> Outcome:
             "⚠️ This PR has merge conflicts. Please resolve them and resend the link.",
         )
 
-    account = approve_and_merge(url, status.author)
+    try:
+        account = approve_and_merge(url, status.author)
+    except GhError:
+        # The merge CLI command failed. A human may have merged on the web between our checks and our
+        # merge — re-read the PR. If it's now merged, that's a no-op for us, not a failure; anything
+        # else is a genuine error.
+        if get_pr_status(url).state == "MERGED":
+            return Outcome(EMOJI_NOOP, _ALREADY_MERGED)
+        raise
+
+    # The merge CLI command returned — now check who actually merged before taking credit (web/bot race).
+    bot_logins = {login for login, _ in settings.github_accounts}
+    merged_by = get_pr_status(url).merged_by
+    if merged_by and merged_by not in bot_logins:
+        return Outcome(EMOJI_NOOP, _ALREADY_MERGED)
     return Outcome(EMOJI_DONE, f"✅ *Approved & merged!* Approved by {account}, branch deleted. 🎉")
 
 

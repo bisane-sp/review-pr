@@ -42,6 +42,7 @@ def _status(
     base_branch="feature/x",
     mergeable="MERGEABLE",
     merge_state="CLEAN",
+    merged_by="",
 ):
     return PrStatus(
         state=state,
@@ -50,6 +51,7 @@ def _status(
         base_branch=base_branch,
         mergeable=mergeable,
         merge_state=merge_state,
+        merged_by=merged_by,
     )
 
 
@@ -245,6 +247,52 @@ def test_merge_failure_reacts_attention_and_replies():
 
     assert "merge didn't go through" in post.call_args[0][0]
     react.assert_called_once_with(MESSAGE, EMOJI_ATTENTION)
+
+
+def test_merge_command_fails_but_pr_already_merged_is_noop():
+    # Race: the merge CLI command fails because a human merged on the web first. Re-reading shows the
+    # PR is merged, so this is a no-op for us — not the "merge didn't go through" error.
+    with (
+        patch.object(handler, "get_pr_status", side_effect=[_status(), _status(state="MERGED")]),
+        patch.object(handler, "approve_and_merge", side_effect=GhError("merge", "not in the correct state")),
+        patch.object(handler, "post_message") as post,
+        patch.object(handler, "add_reaction") as react,
+    ):
+        handler.handle_chat_event(_event(URL))
+
+    assert "already merged" in post.call_args[0][0]
+    react.assert_called_once_with(MESSAGE, EMOJI_NOOP)
+
+
+def test_merge_succeeds_but_human_merged_does_not_take_credit():
+    # The merge command returns, but GitHub names a non-bot merger (web/bot race) — reply neutrally
+    # instead of claiming "Approved & merged".
+    with (
+        patch.object(handler, "get_pr_status", side_effect=[_status(), _status(state="MERGED", merged_by="someone")]),
+        patch.object(handler, "approve_and_merge", return_value="bot-one") as merge,
+        patch.object(handler, "post_message") as post,
+        patch.object(handler, "add_reaction") as react,
+    ):
+        handler.handle_chat_event(_event(URL))
+
+    merge.assert_called_once_with(URL, "pr-author")
+    assert "already merged" in post.call_args[0][0]
+    react.assert_called_once_with(MESSAGE, EMOJI_NOOP)
+
+
+def test_merge_succeeds_by_bot_account_takes_credit():
+    # The merge command returns and GitHub confirms a configured bot account merged it — take credit.
+    with (
+        patch.object(handler, "get_pr_status", side_effect=[_status(), _status(state="MERGED", merged_by="bot-one")]),
+        patch.object(handler, "approve_and_merge", return_value="bot-one") as merge,
+        patch.object(handler, "post_message") as post,
+        patch.object(handler, "add_reaction") as react,
+    ):
+        handler.handle_chat_event(_event(URL))
+
+    merge.assert_called_once_with(URL, "pr-author")
+    post.assert_called_once_with("✅ *Approved & merged!* Approved by bot-one, branch deleted. 🎉", THREAD)
+    react.assert_called_once_with(MESSAGE, EMOJI_DONE)
 
 
 @pytest.mark.parametrize("branch", ["main", "master", "prezent", "Main", "PREZENT"])

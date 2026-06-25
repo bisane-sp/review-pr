@@ -6,7 +6,7 @@ Drop a PR link here and it **approves and merges** the PR. Once done, it replies
 
 ## How to use it
 
-1. Paste a GitHub PR URL into this space (a plain message, not inside a thread).
+1. Paste a GitHub PR URL into this space (a plain message, not inside a thread). One PR link per message — the bot handles a single PR per message.
 2. Wait a moment — the bot picks it up automatically.
 3. Read its in-thread reply + the emoji reaction:
    - ✅ approved & merged
