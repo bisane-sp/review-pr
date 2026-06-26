@@ -157,7 +157,7 @@ def _process_pr(url: str) -> Outcome:
     merged_by = get_pr_status(url).merged_by
     if merged_by and merged_by not in bot_logins:
         return Outcome(EMOJI_NOOP, _ALREADY_MERGED)
-    return Outcome(EMOJI_DONE, f"✅ *Approved & merged!* Approved by {account}, branch deleted. 🎉")
+    return Outcome(EMOJI_DONE, f"✅ *Approved & merged!* Approved by {account}. 🎉")
 
 
 def _gh_error_outcome(url: str, exc: GhError) -> Outcome:

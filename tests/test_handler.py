@@ -68,7 +68,7 @@ def test_open_pr_approves_merges_replies_and_reacts():
     merge.assert_called_once_with(URL, "pr-author")
     # An immediate ack reply, then the final outcome reply — both in-thread.
     assert post.call_args_list[0][0] == ("👀 On it — looking into this PR now…", THREAD)
-    assert post.call_args_list[-1][0] == ("✅ *Approved & merged!* Approved by bot-one, branch deleted. 🎉", THREAD)
+    assert post.call_args_list[-1][0] == ("✅ *Approved & merged!* Approved by bot-one. 🎉", THREAD)
     # 👀 added on receipt, removed, then replaced by the outcome emoji.
     assert react.call_args_list[0][0] == (MESSAGE, handler.EMOJI_WORKING)
     unreact.assert_called_once_with("reaction/R1")
@@ -168,7 +168,7 @@ def test_same_pr_link_twice_is_processed_once():
         handler.handle_chat_event(_event(f"{URL} {URL}"))
 
     merge.assert_called_once_with(URL, "pr-author")
-    post.assert_called_with("✅ *Approved & merged!* Approved by bot-one, branch deleted. 🎉", THREAD)
+    post.assert_called_with("✅ *Approved & merged!* Approved by bot-one. 🎉", THREAD)
     react.assert_called_with(MESSAGE, EMOJI_DONE)
 
 
@@ -307,7 +307,7 @@ def test_merge_succeeds_by_bot_account_takes_credit():
         handler.handle_chat_event(_event(URL))
 
     merge.assert_called_once_with(URL, "pr-author")
-    post.assert_called_with("✅ *Approved & merged!* Approved by bot-one, branch deleted. 🎉", THREAD)
+    post.assert_called_with("✅ *Approved & merged!* Approved by bot-one. 🎉", THREAD)
     react.assert_called_with(MESSAGE, EMOJI_DONE)
 
 
