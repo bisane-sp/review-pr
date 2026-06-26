@@ -17,7 +17,7 @@ from .github import GhError, approve_and_merge, get_pr_status
 from .messages import friendly_gh_error
 from .notify import post_message
 from .pr_url import extract_pr_urls
-from .reactions import add_reaction
+from .reactions import add_reaction, remove_reaction
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +27,7 @@ EMOJI_NOOP = "🚫"  # already merged — nothing for anyone to do
 EMOJI_ATTENTION = "⚠️"  # the user needs to act (closed/draft/blocked/failed/error)
 EMOJI_NO_LINK = "❓"  # no PR link found in the message
 EMOJI_MULTI = "✋"  # more than one PR link — ambiguous, no action taken
+EMOJI_WORKING = "👀"  # acknowledgement while the PR is being processed; removed before the outcome
 
 # Base branches the bot must never merge into — shared/protected targets that require a human merge.
 # Compared case-insensitively against the PR's base branch.
@@ -73,8 +74,7 @@ def handle_chat_event(payload: dict) -> None:
     urls = extract_pr_urls(event.text)
     if not urls:
         post_message(
-            "🔍 I didn't spot a GitHub PR link in that message. Drop one in and I'll approve & "
-            "merge it for you.",
+            "🔍 I didn't spot a GitHub PR link in that message. Drop one in and I'll approve & " "merge it for you.",
             event.thread_name,
         )
         if event.message_name:
@@ -91,6 +91,11 @@ def handle_chat_event(payload: dict) -> None:
         return
     url = urls[0]
 
+    # Acknowledge immediately so a slow approve/merge doesn't look like the bot missed the message.
+    # The 👀 reaction is removed and replaced by the outcome emoji once processing finishes below.
+    post_message("👀 On it — looking into this PR now…", event.thread_name)
+    working_reaction = add_reaction(event.message_name, EMOJI_WORKING) if event.message_name else None
+
     # Every branch below resolves to exactly one outcome, so a PR link is never left unanswered.
     try:
         outcome = _process_pr(url)
@@ -100,12 +105,13 @@ def handle_chat_event(payload: dict) -> None:
         logger.exception("Unexpected error handling %s", url)
         outcome = Outcome(
             EMOJI_ATTENTION,
-            "❌ Something went wrong while handling this PR. I've logged the details for the team to "
-            "look into.",
+            "❌ Something went wrong while handling this PR. I've logged the details for the team to " "look into.",
         )
 
     post_message(outcome.text, event.thread_name)
     if event.message_name:
+        if working_reaction:
+            remove_reaction(working_reaction)
         add_reaction(event.message_name, outcome.emoji)
 
 
