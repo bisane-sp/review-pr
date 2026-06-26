@@ -1,5 +1,6 @@
 """Cloud Pub/Sub pull subscriber: receives Google Chat events and dispatches them."""
 
+import fcntl
 import json
 import logging
 import subprocess
@@ -21,6 +22,28 @@ logger = logging.getLogger(__name__)
 # The Workspace Events subscription expires (~4h TTL), so renew well inside that window.
 RENEW_INTERVAL_SECONDS = 3 * 60 * 60
 _RENEW_SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "manage_subscription.py"
+
+# Single-instance guard: only one subscriber may run against the subscription at a time. Two would let
+# Pub/Sub split messages between them. flock is released by the kernel the moment its holder dies, so
+# there is never a stale lock to clean up.
+_LOCK_FILE = Path(__file__).resolve().parents[2] / "state" / "review-pr-bot.lock"
+_lock_handle = None  # module-global so the fd (and thus the lock) lives for the process lifetime
+
+
+def _acquire_singleton_lock() -> None:
+    """Ensure only one subscriber runs. flock auto-releases on process death (no stale locks)."""
+    global _lock_handle
+    _LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _lock_handle = _LOCK_FILE.open("w")
+    try:
+        fcntl.flock(_lock_handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        logger.error(
+            "Another review-pr-bot instance already holds %s — exiting to avoid duplicate "
+            "subscribers on one Pub/Sub subscription.",
+            _LOCK_FILE,
+        )
+        sys.exit(1)
 
 
 def _renewal_loop() -> None:
@@ -63,6 +86,7 @@ def _callback(message: "pubsub_v1.subscriber.message.Message") -> None:
 
 def run() -> None:
     """Subscribe to the configured subscription and block, processing messages."""
+    _acquire_singleton_lock()
     # Export .env (e.g. GOOGLE_APPLICATION_CREDENTIALS) so the Pub/Sub client can read it.
     load_dotenv()
     threading.Thread(target=_renewal_loop, name="subscription-renewer", daemon=True).start()
