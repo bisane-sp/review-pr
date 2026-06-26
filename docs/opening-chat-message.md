@@ -7,8 +7,8 @@ Drop a PR link here and it **approves and merges** the PR. Once done, it replies
 ## How to use it
 
 1. Paste a GitHub PR URL into this space (a plain message, not inside a thread). One PR link per message — the bot handles a single PR per message.
-2. Wait a moment — the bot picks it up automatically.
-3. Read its in-thread reply + the emoji reaction:
+2. The bot acknowledges right away with a 👀 reaction and an "On it…" reply while it works.
+3. Read its in-thread reply + the emoji reaction (the 👀 is swapped for the final emoji once done):
    - ✅ approved & merged
    - ❓ no PR link found in the message
    - ⚠️ / other → something blocked it (draft PR, merge conflicts, or a protected base branch like `main`/`master`/`prezent`, which are never auto-merged)

@@ -79,18 +79,20 @@ topic. `scripts/manage_subscription.py create` sets this up. Details:
 | Identity | Stored as | Used for | Why it can't be the other |
 |---|---|---|---|
 | **Service account** | `.keys/*.json` (`GOOGLE_APPLICATION_CREDENTIALS`) | pulling Pub/Sub messages | App auth can't create/renew a Chat subscription |
-| **Real user (OAuth)** | `.keys/oauth_client.json` + `.keys/token.json` | create/renew the subscription; add emoji reactions | Must be a human member of the space |
+| **Real user (OAuth)** | `.keys/oauth_client.json` + `.keys/token.json` | create/renew the subscription; add & remove emoji reactions | Must be a human member of the space |
 
 The OAuth client is a **Desktop** client; first run opens a browser for consent, then a **refresh
 token** is saved to `.keys/token.json` so every later renewal/reaction call runs headless. The
 scopes requested are `chat.messages.readonly` (manage the subscription) and
-`chat.messages.reactions.create` (let `reactions.py` react).
+`chat.messages.reactions` (let `reactions.py` add *and remove* reactions — the create-only scope
+can't delete the 👀 working indicator). Re-run the authorize flow if the saved token predates this
+scope.
 
 ### The incoming webhook
 
 Replies ("✅ Merged …" / failure messages) are posted back into the thread via a Google Chat
-**incoming webhook** (`GOOGLE_CHAT_WEBHOOK_URL`). Webhooks are post-only — that's why reactions need
-the OAuth path above instead.
+**incoming webhook** (`GOOGLE_CHAT_WEBHOOK_URL`). Webhooks are post-only — that's why reactions
+(adding *and* removing the 👀 indicator) need the OAuth path above instead.
 
 ## 3. GitHub side
 

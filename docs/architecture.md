@@ -41,7 +41,7 @@ original message. Because Pub/Sub delivery is _pull-based_, the app only makes o
 └──────────────────────────┘
          │
          ▼
-   notify.py (thread reply)  +  reactions.py (emoji on the message)
+   notify.py (thread reply)  +  reactions.py (add / remove emoji on the message)
 ```
 
 The subscriber callback **always acks**, even on failure. Any exception is logged and swallowed so a
@@ -59,7 +59,7 @@ bad message is never re-delivered in a loop and never crashes the subscriber.
 | `chat.py`          | Parse the Google Chat / Workspace Events payload into a `ParsedEvent`    |
 | `messages.py`      | Map raw `gh` / GraphQL errors to friendly, plain-English replies         |
 | `notify.py`        | Post the thread reply via an incoming webhook (post-only)                |
-| `reactions.py`     | Add an emoji reaction via an authenticated Chat API call                 |
+| `reactions.py`     | Add / remove an emoji reaction via an authenticated Chat API call        |
 | `dedup.py`         | Thread-safe, restart-persistent dedup guard (`state/dedup.json`)         |
 | `logging_setup.py` | Coloured console (INFO) + datetime-stamped DEBUG file in `logs/`         |
 
@@ -82,6 +82,15 @@ raises `GhError(step, message)` on any failure, where `step` is `"lookup" | "app
 `handle_chat_event` guarantees that any message with a PR link resolves to exactly one `Outcome`
 (an emoji + a reply). A PR link is never left silently unanswered — PR status, approve/merge result,
 lookup failure, or any unexpected error all map to an `Outcome`.
+
+### Immediate acknowledgement while a PR is processed
+
+Approve + merge can take a few seconds, long enough to look like the bot missed the message. Once a
+single PR link is confirmed, `handle_chat_event` posts an "On it…" reply and adds a 👀 reaction
+(`EMOJI_WORKING`) right away. When processing finishes, the 👀 reaction is removed via
+`remove_reaction` and replaced by the outcome emoji, leaving the message with exactly one final
+reaction. `add_reaction` returns the created reaction's resource name so it can later be removed; the
+removal is best-effort like every other side effect.
 
 ### Mandatory dedup before any side effect (`dedup.py`)
 
@@ -111,7 +120,8 @@ is compared against this set case-insensitively; a match requires a human to mer
   required env vars in `tests/conftest.py` before any import.
 - Secrets live in `.env` and `.keys/` (both gitignored). **Never read `.env`** or commit secrets.
 - `reactions.py` needs an authenticated Chat API call (OAuth token in `.keys/token.json`); webhooks
-  cannot add reactions. `notify.py` posts via an incoming webhook and is post-only.
+  cannot manage reactions. `notify.py` posts via an incoming webhook and is post-only. Removing a
+  reaction needs the broad `chat.messages.reactions` scope — the create-only scope is not enough.
 - The Workspace Events subscription expires (≈4h TTL). The bot renews it itself: `subscriber.py`
   runs a daemon thread that calls `manage_subscription.py ensure` on startup and every 3h. Full
   setup lives in `docs/google-chat-pubsub-setup.md` and `docs/workspace-events-auto-renewal.md`.
