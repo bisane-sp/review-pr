@@ -42,6 +42,7 @@ def _status(
     base_branch="feature/x",
     mergeable="MERGEABLE",
     merge_state="CLEAN",
+    merged_by="",
 ):
     return PrStatus(
         state=state,
@@ -50,6 +51,7 @@ def _status(
         base_branch=base_branch,
         mergeable=mergeable,
         merge_state=merge_state,
+        merged_by=merged_by,
     )
 
 
@@ -58,13 +60,19 @@ def test_open_pr_approves_merges_replies_and_reacts():
         patch.object(handler, "get_pr_status", return_value=_status()),
         patch.object(handler, "approve_and_merge", return_value="bot-one") as merge,
         patch.object(handler, "post_message") as post,
-        patch.object(handler, "add_reaction") as react,
+        patch.object(handler, "add_reaction", return_value="reaction/R1") as react,
+        patch.object(handler, "remove_reaction") as unreact,
     ):
         handler.handle_chat_event(_event(URL))
 
     merge.assert_called_once_with(URL, "pr-author")
-    post.assert_called_once_with("✅ *Approved & merged!* Approved by bot-one, branch deleted. 🎉", THREAD)
-    react.assert_called_once_with(MESSAGE, EMOJI_DONE)
+    # An immediate ack reply, then the final outcome reply — both in-thread.
+    assert post.call_args_list[0][0] == ("👀 On it — looking into this PR now…", THREAD)
+    assert post.call_args_list[-1][0] == ("✅ *Approved & merged!* Approved by bot-one. 🎉", THREAD)
+    # 👀 added on receipt, removed, then replaced by the outcome emoji.
+    assert react.call_args_list[0][0] == (MESSAGE, handler.EMOJI_WORKING)
+    unreact.assert_called_once_with("reaction/R1")
+    assert react.call_args_list[-1][0] == (MESSAGE, EMOJI_DONE)
 
 
 def test_wrong_space_does_nothing():
@@ -155,12 +163,13 @@ def test_same_pr_link_twice_is_processed_once():
         patch.object(handler, "approve_and_merge", return_value="bot-one") as merge,
         patch.object(handler, "post_message") as post,
         patch.object(handler, "add_reaction") as react,
+        patch.object(handler, "remove_reaction"),
     ):
         handler.handle_chat_event(_event(f"{URL} {URL}"))
 
     merge.assert_called_once_with(URL, "pr-author")
-    post.assert_called_once_with("✅ *Approved & merged!* Approved by bot-one, branch deleted. 🎉", THREAD)
-    react.assert_called_once_with(MESSAGE, EMOJI_DONE)
+    post.assert_called_with("✅ *Approved & merged!* Approved by bot-one. 🎉", THREAD)
+    react.assert_called_with(MESSAGE, EMOJI_DONE)
 
 
 def test_already_merged_reacts_noop_and_skips():
@@ -169,12 +178,13 @@ def test_already_merged_reacts_noop_and_skips():
         patch.object(handler, "approve_and_merge") as merge,
         patch.object(handler, "post_message") as post,
         patch.object(handler, "add_reaction") as react,
+        patch.object(handler, "remove_reaction"),
     ):
         handler.handle_chat_event(_event(URL))
 
     merge.assert_not_called()
     assert "already merged" in post.call_args[0][0]
-    react.assert_called_once_with(MESSAGE, EMOJI_NOOP)
+    react.assert_called_with(MESSAGE, EMOJI_NOOP)
 
 
 def test_closed_pr_reacts_attention_and_skips():
@@ -183,12 +193,13 @@ def test_closed_pr_reacts_attention_and_skips():
         patch.object(handler, "approve_and_merge") as merge,
         patch.object(handler, "post_message") as post,
         patch.object(handler, "add_reaction") as react,
+        patch.object(handler, "remove_reaction"),
     ):
         handler.handle_chat_event(_event(URL))
 
     merge.assert_not_called()
     assert "closed" in post.call_args[0][0]
-    react.assert_called_once_with(MESSAGE, EMOJI_ATTENTION)
+    react.assert_called_with(MESSAGE, EMOJI_ATTENTION)
 
 
 def test_draft_pr_reacts_attention_and_skips():
@@ -197,12 +208,13 @@ def test_draft_pr_reacts_attention_and_skips():
         patch.object(handler, "approve_and_merge") as merge,
         patch.object(handler, "post_message") as post,
         patch.object(handler, "add_reaction") as react,
+        patch.object(handler, "remove_reaction"),
     ):
         handler.handle_chat_event(_event(URL))
 
     merge.assert_not_called()
     assert "draft" in post.call_args[0][0]
-    react.assert_called_once_with(MESSAGE, EMOJI_ATTENTION)
+    react.assert_called_with(MESSAGE, EMOJI_ATTENTION)
 
 
 def test_lookup_failure_reacts_attention_and_replies():
@@ -211,12 +223,13 @@ def test_lookup_failure_reacts_attention_and_replies():
         patch.object(handler, "approve_and_merge") as merge,
         patch.object(handler, "post_message") as post,
         patch.object(handler, "add_reaction") as react,
+        patch.object(handler, "remove_reaction"),
     ):
         handler.handle_chat_event(_event(URL))
 
     merge.assert_not_called()
     assert "couldn't find" in post.call_args[0][0]
-    react.assert_called_once_with(MESSAGE, EMOJI_ATTENTION)
+    react.assert_called_with(MESSAGE, EMOJI_ATTENTION)
 
 
 def test_approve_failure_reacts_attention_and_replies():
@@ -225,13 +238,14 @@ def test_approve_failure_reacts_attention_and_replies():
         patch.object(handler, "approve_and_merge", side_effect=GhError("approve", "no perms")),
         patch.object(handler, "post_message") as post,
         patch.object(handler, "add_reaction") as react,
+        patch.object(handler, "remove_reaction"),
     ):
         handler.handle_chat_event(_event(URL))
 
     text, thread = post.call_args[0]
     assert "couldn't approve" in text
     assert thread == THREAD
-    react.assert_called_once_with(MESSAGE, EMOJI_ATTENTION)
+    react.assert_called_with(MESSAGE, EMOJI_ATTENTION)
 
 
 def test_merge_failure_reacts_attention_and_replies():
@@ -240,11 +254,61 @@ def test_merge_failure_reacts_attention_and_replies():
         patch.object(handler, "approve_and_merge", side_effect=GhError("merge", "blocked")),
         patch.object(handler, "post_message") as post,
         patch.object(handler, "add_reaction") as react,
+        patch.object(handler, "remove_reaction"),
     ):
         handler.handle_chat_event(_event(URL))
 
     assert "merge didn't go through" in post.call_args[0][0]
-    react.assert_called_once_with(MESSAGE, EMOJI_ATTENTION)
+    react.assert_called_with(MESSAGE, EMOJI_ATTENTION)
+
+
+def test_merge_command_fails_but_pr_already_merged_is_noop():
+    # Race: the merge CLI command fails because a human merged on the web first. Re-reading shows the
+    # PR is merged, so this is a no-op for us — not the "merge didn't go through" error.
+    with (
+        patch.object(handler, "get_pr_status", side_effect=[_status(), _status(state="MERGED")]),
+        patch.object(handler, "approve_and_merge", side_effect=GhError("merge", "not in the correct state")),
+        patch.object(handler, "post_message") as post,
+        patch.object(handler, "add_reaction") as react,
+        patch.object(handler, "remove_reaction"),
+    ):
+        handler.handle_chat_event(_event(URL))
+
+    assert "already merged" in post.call_args[0][0]
+    react.assert_called_with(MESSAGE, EMOJI_NOOP)
+
+
+def test_merge_succeeds_but_human_merged_does_not_take_credit():
+    # The merge command returns, but GitHub names a non-bot merger (web/bot race) — reply neutrally
+    # instead of claiming "Approved & merged".
+    with (
+        patch.object(handler, "get_pr_status", side_effect=[_status(), _status(state="MERGED", merged_by="someone")]),
+        patch.object(handler, "approve_and_merge", return_value="bot-one") as merge,
+        patch.object(handler, "post_message") as post,
+        patch.object(handler, "add_reaction") as react,
+        patch.object(handler, "remove_reaction"),
+    ):
+        handler.handle_chat_event(_event(URL))
+
+    merge.assert_called_once_with(URL, "pr-author")
+    assert "already merged" in post.call_args[0][0]
+    react.assert_called_with(MESSAGE, EMOJI_NOOP)
+
+
+def test_merge_succeeds_by_bot_account_takes_credit():
+    # The merge command returns and GitHub confirms a configured bot account merged it — take credit.
+    with (
+        patch.object(handler, "get_pr_status", side_effect=[_status(), _status(state="MERGED", merged_by="bot-one")]),
+        patch.object(handler, "approve_and_merge", return_value="bot-one") as merge,
+        patch.object(handler, "post_message") as post,
+        patch.object(handler, "add_reaction") as react,
+        patch.object(handler, "remove_reaction"),
+    ):
+        handler.handle_chat_event(_event(URL))
+
+    merge.assert_called_once_with(URL, "pr-author")
+    post.assert_called_with("✅ *Approved & merged!* Approved by bot-one. 🎉", THREAD)
+    react.assert_called_with(MESSAGE, EMOJI_DONE)
 
 
 @pytest.mark.parametrize("branch", ["main", "master", "prezent", "Main", "PREZENT"])
@@ -254,6 +318,7 @@ def test_protected_base_branch_is_not_merged(branch):
         patch.object(handler, "approve_and_merge") as merge,
         patch.object(handler, "post_message") as post,
         patch.object(handler, "add_reaction") as react,
+        patch.object(handler, "remove_reaction"),
     ):
         handler.handle_chat_event(_event(URL))
 
@@ -261,7 +326,7 @@ def test_protected_base_branch_is_not_merged(branch):
     text = post.call_args[0][0]
     assert branch in text
     assert "not allowed to merge" in text
-    react.assert_called_once_with(MESSAGE, EMOJI_ATTENTION)
+    react.assert_called_with(MESSAGE, EMOJI_ATTENTION)
 
 
 @pytest.mark.parametrize(
@@ -270,11 +335,11 @@ def test_protected_base_branch_is_not_merged(branch):
 )
 def test_conflicting_pr_declines_without_approving(mergeable, merge_state):
     with (
-        patch.object(handler, "get_pr_status",
-                     return_value=_status(mergeable=mergeable, merge_state=merge_state)),
+        patch.object(handler, "get_pr_status", return_value=_status(mergeable=mergeable, merge_state=merge_state)),
         patch.object(handler, "approve_and_merge") as merge,
         patch.object(handler, "post_message") as post,
         patch.object(handler, "add_reaction") as react,
+        patch.object(handler, "remove_reaction"),
     ):
         handler.handle_chat_event(_event(URL))
 
@@ -282,17 +347,17 @@ def test_conflicting_pr_declines_without_approving(mergeable, merge_state):
     text, thread = post.call_args[0]
     assert "merge conflicts" in text
     assert thread == THREAD
-    react.assert_called_once_with(MESSAGE, EMOJI_ATTENTION)
+    react.assert_called_with(MESSAGE, EMOJI_ATTENTION)
 
 
 def test_unknown_mergeability_still_approves():
     # GitHub may not have computed mergeability yet; UNKNOWN must NOT block approval.
     with (
-        patch.object(handler, "get_pr_status",
-                     return_value=_status(mergeable="UNKNOWN", merge_state="UNKNOWN")),
+        patch.object(handler, "get_pr_status", return_value=_status(mergeable="UNKNOWN", merge_state="UNKNOWN")),
         patch.object(handler, "approve_and_merge", return_value="bot-one") as merge,
         patch.object(handler, "post_message"),
         patch.object(handler, "add_reaction"),
+        patch.object(handler, "remove_reaction"),
     ):
         handler.handle_chat_event(_event(URL))
 
@@ -306,13 +371,15 @@ def test_duplicate_delivery_is_processed_once():
         patch.object(handler, "approve_and_merge", return_value="bot-one") as merge,
         patch.object(handler, "post_message") as post,
         patch.object(handler, "add_reaction") as react,
+        patch.object(handler, "remove_reaction"),
     ):
         handler.handle_chat_event(_event(URL))
         handler.handle_chat_event(_event(URL))
 
     merge.assert_called_once_with(URL, "pr-author")
-    post.assert_called_once()
-    react.assert_called_once_with(MESSAGE, EMOJI_DONE)
+    # Processed once: ack reply + outcome reply (the redelivery is deduped away).
+    assert post.call_count == 2
+    react.assert_called_with(MESSAGE, EMOJI_DONE)
 
 
 def test_unexpected_error_still_replies_and_reacts():
@@ -321,10 +388,11 @@ def test_unexpected_error_still_replies_and_reacts():
         patch.object(handler, "get_pr_status", side_effect=ValueError("boom")),
         patch.object(handler, "post_message") as post,
         patch.object(handler, "add_reaction") as react,
+        patch.object(handler, "remove_reaction"),
     ):
         handler.handle_chat_event(_event(URL))
 
     text, thread = post.call_args[0]
     assert "went wrong" in text
     assert thread == THREAD
-    react.assert_called_once_with(MESSAGE, EMOJI_ATTENTION)
+    react.assert_called_with(MESSAGE, EMOJI_ATTENTION)

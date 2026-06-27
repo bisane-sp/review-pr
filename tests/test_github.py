@@ -26,6 +26,7 @@ def _status_json(
     base_branch="feature/x",
     mergeable="MERGEABLE",
     merge_state="CLEAN",
+    merged_by="",
 ):
     return json.dumps(
         {
@@ -35,6 +36,7 @@ def _status_json(
             "baseRefName": base_branch,
             "mergeable": mergeable,
             "mergeStateStatus": merge_state,
+            "mergedBy": {"login": merged_by} if merged_by else None,
         }
     )
 
@@ -52,9 +54,25 @@ def test_get_pr_status_parses_fields():
     assert status.base_branch == "feature/x"
     assert status.mergeable == "MERGEABLE"
     assert status.merge_state == "CLEAN"
+    assert status.merged_by == ""
     args = run.call_args_list[0][0][0]
-    assert args == ["gh", "pr", "view", URL, "--json", "state,isDraft,author,baseRefName,mergeable,mergeStateStatus"]
+    assert args == [
+        "gh",
+        "pr",
+        "view",
+        URL,
+        "--json",
+        "state,isDraft,author,baseRefName,mergeable,mergeStateStatus,mergedBy",
+    ]
     assert run.call_args_list[0][1]["env"]["GH_TOKEN"] == "token-1"  # lookup uses first account
+
+
+def test_get_pr_status_parses_merged_by():
+    with patch.object(github.subprocess, "run", side_effect=[_ok(_status_json(state="MERGED", merged_by="bot-one"))]):
+        status = get_pr_status(URL)
+
+    assert status.state == "MERGED"
+    assert status.merged_by == "bot-one"
 
 
 def test_get_pr_status_lookup_failure_raises():

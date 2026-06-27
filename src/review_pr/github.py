@@ -91,6 +91,7 @@ class PrStatus:
     base_branch: str  # baseRefName: the branch the PR would merge into
     mergeable: str  # "MERGEABLE" | "CONFLICTING" | "UNKNOWN"
     merge_state: str  # mergeStateStatus: "CLEAN" | "BLOCKED" | "DIRTY" | "UNSTABLE" | ...
+    merged_by: str  # mergedBy login: "" when not merged
 
 
 def get_pr_status(url: str) -> PrStatus:
@@ -103,7 +104,7 @@ def get_pr_status(url: str) -> PrStatus:
         raise GhError("lookup", "no GitHub account configured")
     _, token = accounts[0]
     out = _run_gh(
-        ["gh", "pr", "view", url, "--json", "state,isDraft,author,baseRefName,mergeable,mergeStateStatus"],
+        ["gh", "pr", "view", url, "--json", "state,isDraft,author,baseRefName,mergeable,mergeStateStatus,mergedBy"],
         "lookup",
         token,
     )
@@ -118,6 +119,7 @@ def get_pr_status(url: str) -> PrStatus:
         base_branch=data.get("baseRefName", ""),
         mergeable=data.get("mergeable", ""),
         merge_state=data.get("mergeStateStatus", ""),
+        merged_by=(data.get("mergedBy") or {}).get("login", ""),
     )
 
 
