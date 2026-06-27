@@ -12,6 +12,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from google.cloud import pubsub_v1
 
+from . import renewal_state
 from .config import settings
 from .handler import handle_chat_event
 from .logging_setup import setup_logging
@@ -19,8 +20,12 @@ from .logging_setup import setup_logging
 setup_logging()
 logger = logging.getLogger(__name__)
 
-# The Workspace Events subscription expires (~4h TTL), so renew well inside that window.
+# The Workspace Events subscription expires (~4h TTL), so renew well inside that window. We renew when
+# the last successful renewal is at least RENEW_INTERVAL_SECONDS old, checking every
+# RENEW_CHECK_INTERVAL_SECONDS. The last-renewal time is persisted, so a restart resumes the schedule
+# instead of resetting it.
 RENEW_INTERVAL_SECONDS = 3 * 60 * 60
+RENEW_CHECK_INTERVAL_SECONDS = 60
 _RENEW_SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "manage_subscription.py"
 
 # Single-instance guard: only one subscriber may run against the subscription at a time. Two would let
@@ -47,29 +52,32 @@ def _acquire_singleton_lock() -> None:
 
 
 def _renewal_loop() -> None:
-    """Renew the Workspace Events subscription on start, then every RENEW_INTERVAL_SECONDS.
+    """Renew the Workspace Events subscription whenever the last renewal is RENEW_INTERVAL_SECONDS old.
 
-    Runs in a daemon thread alongside the Pub/Sub loop. Failures are logged, never raised —
-    a failed renewal must not take the subscriber down.
+    Runs in a daemon thread alongside the Pub/Sub loop, waking every RENEW_CHECK_INTERVAL_SECONDS. The
+    last successful renewal time is persisted, so a restart only renews if a renewal is actually due.
+    Failures are logged, never raised — a failed renewal must not take the subscriber down.
     """
     while True:
-        try:
-            result = subprocess.run(
-                [sys.executable, str(_RENEW_SCRIPT), "ensure"],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            logger.info("Renewed Workspace Events subscription: %s", result.stdout.strip())
-        except subprocess.CalledProcessError as exc:
-            logger.error(
-                "Failed to renew Workspace Events subscription (exit %s): %s",
-                exc.returncode,
-                (exc.stderr or exc.stdout or "").strip(),
-            )
-        except Exception:
-            logger.exception("Failed to renew Workspace Events subscription")
-        time.sleep(RENEW_INTERVAL_SECONDS)
+        if renewal_state.should_renew(RENEW_INTERVAL_SECONDS, time.time()):
+            try:
+                result = subprocess.run(
+                    [sys.executable, str(_RENEW_SCRIPT), "ensure"],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
+                logger.info("Renewed Workspace Events subscription: %s", result.stdout.strip())
+                renewal_state.record_renewal(time.time())
+            except subprocess.CalledProcessError as exc:
+                logger.error(
+                    "Failed to renew Workspace Events subscription (exit %s): %s",
+                    exc.returncode,
+                    (exc.stderr or exc.stdout or "").strip(),
+                )
+            except Exception:
+                logger.exception("Failed to renew Workspace Events subscription")
+        time.sleep(RENEW_CHECK_INTERVAL_SECONDS)
 
 
 def _callback(message: "pubsub_v1.subscriber.message.Message") -> None:
