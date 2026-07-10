@@ -46,7 +46,7 @@ def test_save_failure_does_not_raise(monkeypatch):
         raise OSError("disk full")
 
     monkeypatch.setattr(dedup.Path, "mkdir", _boom)
-    assert dedup.claim("spaces/X/messages/1") is True   # no exception
+    assert dedup.claim("spaces/X/messages/1") is True  # no exception
     assert dedup.claim("spaces/X/messages/1") is False  # in-memory dedup still works
 
 
@@ -56,4 +56,4 @@ def test_bound_is_enforced_and_mirrored(monkeypatch):
         dedup.claim(f"m{i}")
     saved = json.loads(dedup._DEDUP_FILE.read_text())
     assert saved == ["m1", "m2", "m3"]  # oldest (m0) dropped
-    assert dedup.claim("m0") is True    # m0 no longer remembered
+    assert dedup.claim("m0") is True  # m0 no longer remembered

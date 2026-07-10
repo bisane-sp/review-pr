@@ -34,11 +34,11 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 KEYS = PROJECT_ROOT / ".keys"
 CLIENT_SECRETS = KEYS / "oauth_client.json"
 TOKEN_FILE = KEYS / "token.json"
-# readonly: create/renew the Workspace Events subscription. reactions.create: let the bot react
-# to messages (see src/review_pr/reactions.py). Re-authorize if the saved token predates this.
+# readonly: create/renew the Workspace Events subscription. reactions: let the bot add *and remove*
+# reactions on messages (see src/review_pr/reactions.py). Re-authorize if the saved token predates this.
 SCOPES = [
     "https://www.googleapis.com/auth/chat.messages.readonly",
-    "https://www.googleapis.com/auth/chat.messages.reactions.create",
+    "https://www.googleapis.com/auth/chat.messages.reactions",
 ]
 TOPIC = "projects/review-pr-500320/topics/chat-events"
 BASE = "https://workspaceevents.googleapis.com/v1"

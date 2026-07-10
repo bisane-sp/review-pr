@@ -19,7 +19,10 @@ specific PR may be merged.
 | 5 | **Exactly one PR link?** `len(urls) > 1` | `handler.py:74` | Reply "send just one at a time" + react ✋ (`EMOJI_MULTI`). Ambiguous, so no action. |
 
 Only a message that passes all five — right space, human, first delivery, exactly one PR link —
-reaches Stage 2. The single URL (`urls[0]`) is handed to `_process_pr`.
+reaches Stage 2. Before doing so, the bot **acknowledges immediately**: it posts an "On it…" reply
+and adds a 👀 reaction (`EMOJI_WORKING`) so a slow approve/merge never looks like a missed message.
+The single URL (`urls[0]`) is then handed to `_process_pr`. Once an outcome is reached, the 👀
+reaction is removed and replaced by the outcome emoji below.
 
 ## Stage 2 — PR eligibility checks (`_process_pr`)
 
@@ -74,6 +77,8 @@ message
   ├─ more than one PR link?        → reply + ✋
   │
   ▼ exactly one PR link
+ack: "On it…" reply + 👀          (removed and replaced by the outcome emoji below)
+  │
 get_pr_status (gh pr view)         → lookup error → friendly reply + ⚠️
   │
   ├─ MERGED?                       → reply + 🚫

@@ -22,6 +22,6 @@ def test_prune_removes_old_keeps_recent_and_active(tmp_path, monkeypatch):
 
     logging_setup._prune_old_logs(keep=active)
 
-    assert not old.exists()      # older than retention -> removed
-    assert recent.exists()       # within retention -> kept
-    assert active.exists()       # active file -> always kept, even if old
+    assert not old.exists()  # older than retention -> removed
+    assert recent.exists()  # within retention -> kept
+    assert active.exists()  # active file -> always kept, even if old

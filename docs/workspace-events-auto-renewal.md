@@ -50,7 +50,6 @@ and saves the new name.
 | File | Purpose | Git |
 |---|---|---|
 | `scripts/manage_subscription.py` | create / renew / delete / ensure subscriptions | tracked |
-| `scripts/renew_cron.sh` | wrapper a scheduler calls; runs `ensure` | tracked |
 | `.keys/oauth_client.json` | OAuth client (Desktop) used for user sign-in | **ignored** |
 | `.keys/token.json` | saved user creds incl. refresh token (headless renew) | **ignored** |
 | `.keys/subscription_AAQA1ukurw4.txt` | the active subscription's resource name | **ignored** |
@@ -68,68 +67,20 @@ poetry run python scripts/manage_subscription.py ensure spaces/AAQA1ukurw4
 Run this any time within 4h of the last renewal. That's all renewal *is* — the rest is just
 automating this command on a timer.
 
-## Automate it (launchd, every 3 hours)
+## Automatic renewal (built into the bot)
 
-Renew every 3h to stay comfortably under the 4h TTL. A launchd **LaunchAgent** runs the wrapper
-on a timer (and at login). This installs a persistent background job, so review before enabling.
+The subscriber renews itself — there is no separate scheduler, cron job, or LaunchAgent. On
+startup `review-pr-bot` spawns a daemon thread (`subscriber._renewal_loop`) that runs
+`manage_subscription.py ensure` immediately and then every **3 hours**, staying comfortably under
+the ~4h TTL. Because renewal lives inside the bot process:
 
-1. Create `~/Library/LaunchAgents/com.review-pr.events-renew.plist`:
+- Starting the bot (`make run`, `make bot`, or `poetry run review-pr-bot`) immediately ensures a
+  live subscription, then keeps it alive for as long as the process runs.
+- A failed renewal is logged and retried on the next cycle — it never crashes the subscriber.
+- If the subscription has already lapsed beyond recovery, `ensure` transparently recreates it.
 
-   ```xml
-   <?xml version="1.0" encoding="UTF-8"?>
-   <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-   <plist version="1.0">
-   <dict>
-       <key>Label</key>
-       <string>com.review-pr.events-renew</string>
-       <key>ProgramArguments</key>
-       <array>
-           <string>/bin/zsh</string>
-           <string>/Users/bisane.s/office_work/projects/review-pr/scripts/renew_cron.sh</string>
-       </array>
-       <key>StartInterval</key>
-       <integer>10800</integer>
-       <key>RunAtLoad</key>
-       <true/>
-       <key>StandardOutPath</key>
-       <string>/Users/bisane.s/office_work/projects/review-pr/temp/renew.launchd.out.log</string>
-       <key>StandardErrorPath</key>
-       <string>/Users/bisane.s/office_work/projects/review-pr/temp/renew.launchd.err.log</string>
-   </dict>
-   </plist>
-   ```
-
-2. Load it:
-
-   ```bash
-   launchctl load ~/Library/LaunchAgents/com.review-pr.events-renew.plist
-   ```
-
-3. Check / unload:
-
-   ```bash
-   launchctl list | grep review-pr            # confirm it's registered
-   tail -f temp/renew.log                      # watch renewals
-   launchctl unload ~/Library/LaunchAgents/com.review-pr.events-renew.plist   # stop
-   ```
-
-Caveats: launchd only fires while the Mac is awake; a missed window (laptop asleep > 4h) lets the
-subscription lapse — `ensure` handles that by recreating it on the next run. The subscriber
-(`review-pr-bot`) is a separate process; it must also be running to actually log the events.
-
-## Installed on this machine
-
-The LaunchAgent above is **installed and active** on this Mac:
-
-- Plist: `~/Library/LaunchAgents/com.review-pr.events-renew.plist` (fires `scripts/renew_cron.sh`
-  every `10800`s / 3h, plus at login via `RunAtLoad`).
-- Loaded with `launchctl load`; `launchctl list | grep review-pr` shows `com.review-pr.events-renew`.
-- First run (triggered by `RunAtLoad`): the stored subscription had lapsed and renew returned `403`,
-  so `ensure` transparently **recreated** it — exactly the recovery path described above. Renewal
-  output is appended to `temp/renew.log`; launchd's own stdout/stderr go to
-  `temp/renew.launchd.out.log` / `temp/renew.launchd.err.log`.
-
-To stop it: `launchctl unload ~/Library/LaunchAgents/com.review-pr.events-renew.plist`.
+Renewal only happens while the bot is running. If the process is down for >4h the subscription
+lapses, but the next start renews/recreates it.
 
 ## Troubleshooting
 

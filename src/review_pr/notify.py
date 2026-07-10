@@ -11,8 +11,11 @@ logger = logging.getLogger(__name__)
 _TIMEOUT = 10
 
 
-def post_message(text: str, thread_name: str | None = None) -> None:
+def post_message(text: str, thread_name: str | None = None, main_message: str | None = None) -> None:
     """Post ``text`` into the space, threaded under ``thread_name`` when provided.
+
+    ``main_message`` is the original human message being replied to; it's included in the
+    success debug log so the log correlates each reply with the message that triggered it.
 
     Failures are logged, not raised — a failed notification must not crash the subscriber.
     """
@@ -30,5 +33,6 @@ def post_message(text: str, thread_name: str | None = None) -> None:
             timeout=_TIMEOUT,
         )
         response.raise_for_status()
+        logger.debug("Reply sent (in reply to: %r): %s", main_message, text)
     except requests.RequestException:
         logger.exception("Failed to post message to Google Chat")
