@@ -168,7 +168,7 @@ def test_same_pr_link_twice_is_processed_once():
         handler.handle_chat_event(_event(f"{URL} {URL}"))
 
     merge.assert_called_once_with(URL, "pr-author")
-    post.assert_called_with("✅ *Approved & merged!* Approved by bot-one. 🎉", THREAD)
+    post.assert_called_with("✅ *Approved & merged!* Approved by bot-one. 🎉", THREAD, main_message=f"{URL} {URL}")
     react.assert_called_with(MESSAGE, EMOJI_DONE)
 
 
@@ -307,7 +307,7 @@ def test_merge_succeeds_by_bot_account_takes_credit():
         handler.handle_chat_event(_event(URL))
 
     merge.assert_called_once_with(URL, "pr-author")
-    post.assert_called_with("✅ *Approved & merged!* Approved by bot-one. 🎉", THREAD)
+    post.assert_called_with("✅ *Approved & merged!* Approved by bot-one. 🎉", THREAD, main_message=URL)
     react.assert_called_with(MESSAGE, EMOJI_DONE)
 
 

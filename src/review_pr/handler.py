@@ -76,6 +76,7 @@ def handle_chat_event(payload: dict) -> None:
         post_message(
             "🔍 I didn't spot a GitHub PR link in that message. Drop one in and I'll approve & " "merge it for you.",
             event.thread_name,
+            main_message=event.text,
         )
         if event.message_name:
             add_reaction(event.message_name, EMOJI_NO_LINK)
@@ -85,6 +86,7 @@ def handle_chat_event(payload: dict) -> None:
             "🔀 I found more than one PR link in that message. Please send just one at a time so I "
             "know which to approve & merge.",
             event.thread_name,
+            main_message=event.text,
         )
         if event.message_name:
             add_reaction(event.message_name, EMOJI_MULTI)
@@ -93,7 +95,7 @@ def handle_chat_event(payload: dict) -> None:
 
     # Acknowledge immediately so a slow approve/merge doesn't look like the bot missed the message.
     # The 👀 reaction is removed and replaced by the outcome emoji once processing finishes below.
-    post_message("👀 On it — looking into this PR now…", event.thread_name)
+    post_message("👀 On it — looking into this PR now…", event.thread_name, main_message=event.text)
     working_reaction = add_reaction(event.message_name, EMOJI_WORKING) if event.message_name else None
 
     # Every branch below resolves to exactly one outcome, so a PR link is never left unanswered.
@@ -108,7 +110,7 @@ def handle_chat_event(payload: dict) -> None:
             "❌ Something went wrong while handling this PR. I've logged the details for the team to " "look into.",
         )
 
-    post_message(outcome.text, event.thread_name)
+    post_message(outcome.text, event.thread_name, main_message=event.text)
     if event.message_name:
         if working_reaction:
             remove_reaction(working_reaction)
