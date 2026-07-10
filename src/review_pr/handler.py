@@ -8,6 +8,7 @@ failure, or any unexpected error. No PR link ever goes unanswered.
 """
 
 import logging
+import threading
 from dataclasses import dataclass
 
 from .chat import parse_message_event
@@ -37,6 +38,12 @@ PROTECTED_BASE_BRANCHES = {"prezent", "main", "master"}
 # pre-check and when a human wins the web/bot merge race.
 _ALREADY_MERGED = "🚫 This PR is already merged — nothing for me to do."
 
+# thread_name -> full human message text. Lets the debug log correlate the bot's own reply echoes
+# (which arrive on a separate callback carrying only the thread) back to the message that triggered
+# them. In-memory only; the space is low-traffic, so no eviction is needed.
+_MAIN_MESSAGES: dict[str, str] = {}
+_MAIN_MESSAGES_LOCK = threading.Lock()
+
 
 @dataclass
 class Outcome:
@@ -54,8 +61,11 @@ def handle_chat_event(payload: dict) -> None:
         return
 
     # Loop guard: only respond to humans. The bot's own webhook replies arrive as non-HUMAN
-    # senders; replying to those would trigger an infinite loop.
+    # senders; replying to those would trigger an infinite loop. Log the delivered reply against the
+    # main message it answers so the echo isn't an orphaned line in the debug log.
     if event.sender_type != "HUMAN":
+        main = _MAIN_MESSAGES.get(event.thread_name) if event.thread_name else None
+        logger.debug("Reply delivered (in reply to: %r): %s", main, event.text)
         return
 
     # Only act on top-level space messages. Replies inside a thread are ignored entirely
@@ -70,6 +80,9 @@ def handle_chat_event(payload: dict) -> None:
         return
 
     logger.info("Message in %s: %s", event.space_name, event.text)
+    if event.thread_name:
+        with _MAIN_MESSAGES_LOCK:
+            _MAIN_MESSAGES[event.thread_name] = event.text
 
     urls = extract_pr_urls(event.text)
     if not urls:
@@ -79,7 +92,7 @@ def handle_chat_event(payload: dict) -> None:
             main_message=event.text,
         )
         if event.message_name:
-            add_reaction(event.message_name, EMOJI_NO_LINK)
+            add_reaction(event.message_name, EMOJI_NO_LINK, main_message=event.text)
         return
     if len(urls) > 1:
         post_message(
@@ -89,14 +102,16 @@ def handle_chat_event(payload: dict) -> None:
             main_message=event.text,
         )
         if event.message_name:
-            add_reaction(event.message_name, EMOJI_MULTI)
+            add_reaction(event.message_name, EMOJI_MULTI, main_message=event.text)
         return
     url = urls[0]
 
     # Acknowledge immediately so a slow approve/merge doesn't look like the bot missed the message.
     # The 👀 reaction is removed and replaced by the outcome emoji once processing finishes below.
     post_message("👀 On it — looking into this PR now…", event.thread_name, main_message=event.text)
-    working_reaction = add_reaction(event.message_name, EMOJI_WORKING) if event.message_name else None
+    working_reaction = (
+        add_reaction(event.message_name, EMOJI_WORKING, main_message=event.text) if event.message_name else None
+    )
 
     # Every branch below resolves to exactly one outcome, so a PR link is never left unanswered.
     try:
@@ -113,8 +128,8 @@ def handle_chat_event(payload: dict) -> None:
     post_message(outcome.text, event.thread_name, main_message=event.text)
     if event.message_name:
         if working_reaction:
-            remove_reaction(working_reaction)
-        add_reaction(event.message_name, outcome.emoji)
+            remove_reaction(working_reaction, main_message=event.text)
+        add_reaction(event.message_name, outcome.emoji, main_message=event.text)
 
 
 def _process_pr(url: str) -> Outcome:

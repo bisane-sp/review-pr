@@ -1,3 +1,4 @@
+import logging
 from unittest.mock import patch
 
 import pytest
@@ -18,8 +19,10 @@ def _clear_dedup(tmp_path, monkeypatch):
     monkeypatch.setattr(dedup, "_DEDUP_FILE", tmp_path / "dedup.json")
     dedup._seen.clear()
     monkeypatch.setattr(dedup, "_loaded", True)  # empty + loaded: no read of the real file
+    handler._MAIN_MESSAGES.clear()
     yield
     dedup._seen.clear()
+    handler._MAIN_MESSAGES.clear()
 
 
 def _event(text, space=SPACE, thread=THREAD, sender_type="HUMAN", message_name=MESSAGE, thread_reply=False):
@@ -71,7 +74,7 @@ def test_open_pr_approves_merges_replies_and_reacts():
     assert post.call_args_list[-1][0] == ("✅ *Approved & merged!* Approved by bot-one. 🎉", THREAD)
     # 👀 added on receipt, removed, then replaced by the outcome emoji.
     assert react.call_args_list[0][0] == (MESSAGE, handler.EMOJI_WORKING)
-    unreact.assert_called_once_with("reaction/R1")
+    unreact.assert_called_once_with("reaction/R1", main_message=URL)
     assert react.call_args_list[-1][0] == (MESSAGE, EMOJI_DONE)
 
 
@@ -104,6 +107,24 @@ def test_non_human_sender_is_ignored():
     react.assert_not_called()
 
 
+def test_reply_echo_logs_main_message(caplog):
+    # The bot's own reply echoes back as a non-HUMAN message; the debug log ties that echo to the
+    # human message it answers (remembered from the earlier human message on the same thread).
+    with (
+        patch.object(handler, "get_pr_status") as status,
+        patch.object(handler, "post_message"),
+        patch.object(handler, "add_reaction"),
+    ):
+        handler.handle_chat_event(_event("good morning team"))  # remembers thread -> text
+        with caplog.at_level(logging.DEBUG, logger="review_pr.handler"):
+            handler.handle_chat_event(
+                _event("👀 On it — looking into this PR now…", sender_type="BOT", thread_reply=True)
+            )
+
+    status.assert_not_called()
+    assert "Reply delivered (in reply to: 'good morning team'): 👀 On it — looking into this PR now…" in caplog.text
+
+
 def test_thread_reply_message_is_ignored():
     # Replies inside a thread are skipped entirely, even with a valid PR link: no lookup/reply/react.
     with (
@@ -133,7 +154,7 @@ def test_message_without_pr_url_replies_no_link_and_reacts():
     assert "didn't spot a GitHub PR link" in text
     assert thread == THREAD
     post.assert_called_once()
-    react.assert_called_once_with(MESSAGE, handler.EMOJI_NO_LINK)
+    react.assert_called_once_with(MESSAGE, handler.EMOJI_NO_LINK, main_message="good morning team")
 
 
 def test_multiple_pr_links_replies_and_takes_no_action():
@@ -153,7 +174,7 @@ def test_multiple_pr_links_replies_and_takes_no_action():
     assert "more than one PR link" in text
     assert thread == THREAD
     post.assert_called_once()
-    react.assert_called_once_with(MESSAGE, handler.EMOJI_MULTI)
+    react.assert_called_once_with(MESSAGE, handler.EMOJI_MULTI, main_message=f"merge {URL} and {second}")
 
 
 def test_same_pr_link_twice_is_processed_once():
@@ -169,7 +190,7 @@ def test_same_pr_link_twice_is_processed_once():
 
     merge.assert_called_once_with(URL, "pr-author")
     post.assert_called_with("✅ *Approved & merged!* Approved by bot-one. 🎉", THREAD, main_message=f"{URL} {URL}")
-    react.assert_called_with(MESSAGE, EMOJI_DONE)
+    react.assert_called_with(MESSAGE, EMOJI_DONE, main_message=f"{URL} {URL}")
 
 
 def test_already_merged_reacts_noop_and_skips():
@@ -184,7 +205,7 @@ def test_already_merged_reacts_noop_and_skips():
 
     merge.assert_not_called()
     assert "already merged" in post.call_args[0][0]
-    react.assert_called_with(MESSAGE, EMOJI_NOOP)
+    react.assert_called_with(MESSAGE, EMOJI_NOOP, main_message=URL)
 
 
 def test_closed_pr_reacts_attention_and_skips():
@@ -199,7 +220,7 @@ def test_closed_pr_reacts_attention_and_skips():
 
     merge.assert_not_called()
     assert "closed" in post.call_args[0][0]
-    react.assert_called_with(MESSAGE, EMOJI_ATTENTION)
+    react.assert_called_with(MESSAGE, EMOJI_ATTENTION, main_message=URL)
 
 
 def test_draft_pr_reacts_attention_and_skips():
@@ -214,7 +235,7 @@ def test_draft_pr_reacts_attention_and_skips():
 
     merge.assert_not_called()
     assert "draft" in post.call_args[0][0]
-    react.assert_called_with(MESSAGE, EMOJI_ATTENTION)
+    react.assert_called_with(MESSAGE, EMOJI_ATTENTION, main_message=URL)
 
 
 def test_lookup_failure_reacts_attention_and_replies():
@@ -229,7 +250,7 @@ def test_lookup_failure_reacts_attention_and_replies():
 
     merge.assert_not_called()
     assert "couldn't find" in post.call_args[0][0]
-    react.assert_called_with(MESSAGE, EMOJI_ATTENTION)
+    react.assert_called_with(MESSAGE, EMOJI_ATTENTION, main_message=URL)
 
 
 def test_approve_failure_reacts_attention_and_replies():
@@ -245,7 +266,7 @@ def test_approve_failure_reacts_attention_and_replies():
     text, thread = post.call_args[0]
     assert "couldn't approve" in text
     assert thread == THREAD
-    react.assert_called_with(MESSAGE, EMOJI_ATTENTION)
+    react.assert_called_with(MESSAGE, EMOJI_ATTENTION, main_message=URL)
 
 
 def test_merge_failure_reacts_attention_and_replies():
@@ -259,7 +280,7 @@ def test_merge_failure_reacts_attention_and_replies():
         handler.handle_chat_event(_event(URL))
 
     assert "merge didn't go through" in post.call_args[0][0]
-    react.assert_called_with(MESSAGE, EMOJI_ATTENTION)
+    react.assert_called_with(MESSAGE, EMOJI_ATTENTION, main_message=URL)
 
 
 def test_merge_command_fails_but_pr_already_merged_is_noop():
@@ -275,7 +296,7 @@ def test_merge_command_fails_but_pr_already_merged_is_noop():
         handler.handle_chat_event(_event(URL))
 
     assert "already merged" in post.call_args[0][0]
-    react.assert_called_with(MESSAGE, EMOJI_NOOP)
+    react.assert_called_with(MESSAGE, EMOJI_NOOP, main_message=URL)
 
 
 def test_merge_succeeds_but_human_merged_does_not_take_credit():
@@ -292,7 +313,7 @@ def test_merge_succeeds_but_human_merged_does_not_take_credit():
 
     merge.assert_called_once_with(URL, "pr-author")
     assert "already merged" in post.call_args[0][0]
-    react.assert_called_with(MESSAGE, EMOJI_NOOP)
+    react.assert_called_with(MESSAGE, EMOJI_NOOP, main_message=URL)
 
 
 def test_merge_succeeds_by_bot_account_takes_credit():
@@ -308,7 +329,7 @@ def test_merge_succeeds_by_bot_account_takes_credit():
 
     merge.assert_called_once_with(URL, "pr-author")
     post.assert_called_with("✅ *Approved & merged!* Approved by bot-one. 🎉", THREAD, main_message=URL)
-    react.assert_called_with(MESSAGE, EMOJI_DONE)
+    react.assert_called_with(MESSAGE, EMOJI_DONE, main_message=URL)
 
 
 @pytest.mark.parametrize("branch", ["main", "master", "prezent", "Main", "PREZENT"])
@@ -326,7 +347,7 @@ def test_protected_base_branch_is_not_merged(branch):
     text = post.call_args[0][0]
     assert branch in text
     assert "not allowed to merge" in text
-    react.assert_called_with(MESSAGE, EMOJI_ATTENTION)
+    react.assert_called_with(MESSAGE, EMOJI_ATTENTION, main_message=URL)
 
 
 @pytest.mark.parametrize(
@@ -347,7 +368,7 @@ def test_conflicting_pr_declines_without_approving(mergeable, merge_state):
     text, thread = post.call_args[0]
     assert "merge conflicts" in text
     assert thread == THREAD
-    react.assert_called_with(MESSAGE, EMOJI_ATTENTION)
+    react.assert_called_with(MESSAGE, EMOJI_ATTENTION, main_message=URL)
 
 
 def test_unknown_mergeability_still_approves():
@@ -379,7 +400,7 @@ def test_duplicate_delivery_is_processed_once():
     merge.assert_called_once_with(URL, "pr-author")
     # Processed once: ack reply + outcome reply (the redelivery is deduped away).
     assert post.call_count == 2
-    react.assert_called_with(MESSAGE, EMOJI_DONE)
+    react.assert_called_with(MESSAGE, EMOJI_DONE, main_message=URL)
 
 
 def test_unexpected_error_still_replies_and_reacts():
@@ -395,4 +416,4 @@ def test_unexpected_error_still_replies_and_reacts():
     text, thread = post.call_args[0]
     assert "went wrong" in text
     assert thread == THREAD
-    react.assert_called_with(MESSAGE, EMOJI_ATTENTION)
+    react.assert_called_with(MESSAGE, EMOJI_ATTENTION, main_message=URL)

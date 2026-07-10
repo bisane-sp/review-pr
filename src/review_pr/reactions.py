@@ -31,8 +31,11 @@ SCOPES = [
 _TIMEOUT = 10
 
 
-def add_reaction(message_name: str, emoji: str) -> str | None:
+def add_reaction(message_name: str, emoji: str, main_message: str | None = None) -> str | None:
     """React to ``message_name`` (e.g. ``spaces/X/messages/Y``) with the unicode ``emoji``.
+
+    ``main_message`` is the original human message being reacted to; it's included in the success
+    debug log so the log correlates each reaction with the message that triggered it.
 
     Returns the created reaction's resource name (``spaces/X/messages/Y/reactions/Z``) so it can
     later be passed to ``remove_reaction``, or ``None`` if the call failed.
@@ -48,14 +51,19 @@ def add_reaction(message_name: str, emoji: str) -> str | None:
             timeout=_TIMEOUT,
         )
         response.raise_for_status()
+        logger.debug("Reaction %s added to %s (in reply to: %r)", emoji, message_name, main_message)
         return response.json().get("name")
     except Exception:
         logger.exception("Failed to add reaction %s to %s", emoji, message_name)
         return None
 
 
-def remove_reaction(reaction_name: str) -> None:
-    """Delete the reaction identified by ``reaction_name`` (``spaces/X/messages/Y/reactions/Z``)."""
+def remove_reaction(reaction_name: str, main_message: str | None = None) -> None:
+    """Delete the reaction identified by ``reaction_name`` (``spaces/X/messages/Y/reactions/Z``).
+
+    ``main_message`` is the original human message; it's included in the success debug log so the
+    log correlates the removal with the message that triggered it.
+    """
     try:
         creds = Credentials.from_authorized_user_file(str(_TOKEN_FILE), SCOPES)
         if not creds.valid:
@@ -66,5 +74,6 @@ def remove_reaction(reaction_name: str) -> None:
             timeout=_TIMEOUT,
         )
         response.raise_for_status()
+        logger.debug("Reaction removed: %s (in reply to: %r)", reaction_name, main_message)
     except Exception:
         logger.exception("Failed to remove reaction %s", reaction_name)
