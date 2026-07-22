@@ -9,6 +9,7 @@ failure, or any unexpected error. No PR link ever goes unanswered.
 
 import logging
 import threading
+from collections import OrderedDict
 from dataclasses import dataclass
 
 from .chat import parse_message_event
@@ -40,8 +41,10 @@ _ALREADY_MERGED = "🚫 This PR is already merged — nothing for me to do."
 
 # thread_name -> full human message text. Lets the debug log correlate the bot's own reply echoes
 # (which arrive on a separate callback carrying only the thread) back to the message that triggered
-# them. In-memory only; the space is low-traffic, so no eviction is needed.
-_MAIN_MESSAGES: dict[str, str] = {}
+# them. Bounded LRU: the process runs indefinitely, so cap the map and evict the oldest thread to
+# keep it from growing without limit — a stale echo losing its correlation is only a debug-log miss.
+_MAIN_MESSAGES_MAX = 512
+_MAIN_MESSAGES: "OrderedDict[str, str]" = OrderedDict()
 _MAIN_MESSAGES_LOCK = threading.Lock()
 
 
@@ -64,7 +67,11 @@ def handle_chat_event(payload: dict) -> None:
     # senders; replying to those would trigger an infinite loop. Log the delivered reply against the
     # main message it answers so the echo isn't an orphaned line in the debug log.
     if event.sender_type != "HUMAN":
-        main = _MAIN_MESSAGES.get(event.thread_name) if event.thread_name else None
+        if event.thread_name:
+            with _MAIN_MESSAGES_LOCK:
+                main = _MAIN_MESSAGES.get(event.thread_name)
+        else:
+            main = None
         logger.debug("Reply delivered (in reply to: %r): %s", main, event.text)
         return
 
@@ -83,6 +90,9 @@ def handle_chat_event(payload: dict) -> None:
     if event.thread_name:
         with _MAIN_MESSAGES_LOCK:
             _MAIN_MESSAGES[event.thread_name] = event.text
+            _MAIN_MESSAGES.move_to_end(event.thread_name)
+            while len(_MAIN_MESSAGES) > _MAIN_MESSAGES_MAX:
+                _MAIN_MESSAGES.popitem(last=False)
 
     # Pause switch: when the bot is disabled, reply that it is paused and do nothing else.
     if not settings.bot_enabled:

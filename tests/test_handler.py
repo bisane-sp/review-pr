@@ -146,6 +146,26 @@ def test_reply_echo_logs_main_message(caplog):
     assert "Reply delivered (in reply to: 'good morning team'): 👀 On it — looking into this PR now…" in caplog.text
 
 
+def test_main_messages_map_is_capped(monkeypatch):
+    # The thread -> message map is a bounded LRU: it never grows past the cap, evicting oldest first.
+    monkeypatch.setattr(handler, "_MAIN_MESSAGES_MAX", 3)
+    with (
+        patch.object(handler, "get_pr_status"),
+        patch.object(handler, "post_message"),
+        patch.object(handler, "add_reaction"),
+    ):
+        for i in range(5):
+            handler.handle_chat_event(_event("hello", thread=f"spaces/TEST/threads/T{i}", message_name=f"m{i}"))
+
+    assert len(handler._MAIN_MESSAGES) == 3
+    # Oldest two threads evicted; the three most recent remain.
+    assert list(handler._MAIN_MESSAGES) == [
+        "spaces/TEST/threads/T2",
+        "spaces/TEST/threads/T3",
+        "spaces/TEST/threads/T4",
+    ]
+
+
 def test_thread_reply_message_is_ignored():
     # Replies inside a thread are skipped entirely, even with a valid PR link: no lookup/reply/react.
     with (
