@@ -84,6 +84,16 @@ def handle_chat_event(payload: dict) -> None:
         with _MAIN_MESSAGES_LOCK:
             _MAIN_MESSAGES[event.thread_name] = event.text
 
+    # Pause switch: when the bot is disabled, reply that it is paused and do nothing else.
+    if not settings.bot_enabled:
+        logger.info("Bot disabled (BOT_ENABLED=false); replying paused notice for %s", event.message_name)
+        post_message(
+            "⏸️ The bot is currently paused and isn't processing requests right now.",
+            event.thread_name,
+            main_message=event.text,
+        )
+        return
+
     urls = extract_pr_urls(event.text)
     if not urls:
         post_message(

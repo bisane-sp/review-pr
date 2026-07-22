@@ -107,6 +107,27 @@ def test_non_human_sender_is_ignored():
     react.assert_not_called()
 
 
+def test_disabled_bot_replies_paused_and_skips_processing(monkeypatch):
+    # When BOT_ENABLED is false the bot posts a paused notice and never touches GitHub.
+    monkeypatch.setattr(handler.settings, "bot_enabled", False)
+    with (
+        patch.object(handler, "get_pr_status") as status,
+        patch.object(handler, "approve_and_merge") as merge,
+        patch.object(handler, "post_message") as post,
+        patch.object(handler, "add_reaction") as react,
+    ):
+        handler.handle_chat_event(_event(URL))
+
+    status.assert_not_called()
+    merge.assert_not_called()
+    react.assert_not_called()
+    post.assert_called_once_with(
+        "⏸️ The bot is currently paused and isn't processing requests right now.",
+        THREAD,
+        main_message=URL,
+    )
+
+
 def test_reply_echo_logs_main_message(caplog):
     # The bot's own reply echoes back as a non-HUMAN message; the debug log ties that echo to the
     # human message it answers (remembered from the earlier human message on the same thread).
