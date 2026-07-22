@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     gh_timeout_seconds: int = 60
     # Console log verbosity (the log file is always DEBUG). One of DEBUG/INFO/WARNING/ERROR/CRITICAL.
     log_level: str = "INFO"
+    # When false, the bot replies that it is paused and does not process any PRs.
+    bot_enabled: bool = True
 
     # Only used by utils/create_space_subscription.py (one-off setup).
     chat_events_topic: str = ""
